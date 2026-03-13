@@ -111,10 +111,10 @@ AI 会自动：
 **Figma 骨架（中间产物，不直接使用）：**
 
 ```html
-<div class="flex flex-row gap-4 items-center">
-  <span class="text-black text-base font-normal">年份</span>
-  <div class="flex flex-row gap-1 items-center">
-    <span class="text-[rgba(0,0,0,0.64)] text-base">2025</span>
+<div class="flex flex-row gap-[16px] items-center">
+  <span class="text-[#000000] text-[16px] font-[400]">年份</span>
+  <div class="flex flex-row gap-[4px] items-center">
+    <span class="text-[rgba(0,0,0,0.64)] text-[16px]">2025</span>
     <IconArrowHeavyRight class="w-[12px] h-[12px]" />
   </div>
 </div>

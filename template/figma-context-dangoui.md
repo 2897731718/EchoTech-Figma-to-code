@@ -87,7 +87,9 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 
 | Figma 节点名含 | 组件 | 用法 |
 |---|---|---|
-| `Input` / `FormItem` / `InputFrame` / `TextField` | `<DuInput>` | 见下方 |
+| `Input` / `InputFrame` / `TextField` | `<DuInput>` | 见下方 |
+| `FormItem` 且变体为 `Type=Input_frame`（无 label） | `<DuInput>` | 直接用，不套 Form |
+| `FormItem` 且有 label 文字 | `<FormItem>` + `<DuInput>` | 套 Form |
 | `Textarea` | `<DuTextarea>` | 见下方 |
 
 ```html

@@ -66,16 +66,18 @@ describe('UnoCSS Converter', () => {
 
   describe('UnoCSS Mappings', () => {
     describe('convertSpacing', () => {
-      it('should convert px to rem-based spacing', () => {
-        expect(convertSpacing('16px')).toMatch(/^p-/)
+      it('should preserve raw px values', () => {
+        expect(convertSpacing('16px')).toBe('p-[16px]')
         expect(convertSpacing('0px')).toBe('p-0')
+        expect(convertSpacing('32px')).toBe('p-[32px]')
       })
     })
 
     describe('convertGap', () => {
-      it('should convert gap values', () => {
-        expect(convertGap('8px')).toMatch(/^gap-/)
+      it('should preserve raw px values', () => {
+        expect(convertGap('8px')).toBe('gap-[8px]')
         expect(convertGap('0px')).toBe('gap-0')
+        expect(convertGap('32px')).toBe('gap-[32px]')
       })
     })
 
@@ -99,23 +101,26 @@ describe('UnoCSS Converter', () => {
     })
 
     describe('convertBorderRadius', () => {
-      it('should convert border radius', () => {
-        expect(convertBorderRadius('8px')).toMatch(/^rounded-/)
+      it('should preserve raw px values', () => {
+        expect(convertBorderRadius('8px')).toBe('rounded-[8px]')
+        expect(convertBorderRadius('4px')).toBe('rounded-[4px]')
         expect(convertBorderRadius('0px')).toBeNull()
       })
     })
 
     describe('convertFontSize', () => {
-      it('should convert font sizes', () => {
-        expect(convertFontSize('16px')).toMatch(/^text-/)
+      it('should preserve raw px values', () => {
+        expect(convertFontSize('16px')).toBe('text-[16px]')
+        expect(convertFontSize('14px')).toBe('text-[14px]')
+        expect(convertFontSize('12px')).toBe('text-[12px]')
       })
     })
 
     describe('convertFontWeight', () => {
-      it('should convert font weights', () => {
-        expect(convertFontWeight('400')).toBe('font-normal')
-        expect(convertFontWeight('700')).toBe('font-bold')
-        expect(convertFontWeight('500')).toBe('font-medium')
+      it('should convert font weights to arbitrary values', () => {
+        expect(convertFontWeight('400')).toBe('font-[400]')
+        expect(convertFontWeight('700')).toBe('font-[700]')
+        expect(convertFontWeight('500')).toBe('font-[500]')
       })
     })
   })

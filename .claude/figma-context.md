@@ -27,7 +27,7 @@
 
 **间距单位**：1unit = 1px（非标准 Tailwind，`px-15` = 15px，`gap-8` = 8px）
 
-换算规则：骨架中 `gap-2`（标准 = 8px）→ 项目中写 `gap-8`
+换算规则：骨架中已保留原始 px 值（如 `gap-[32px]`），翻译时直接去掉括号即可：`gap-[32px]` → `gap-32`
 
 ---
 
@@ -78,10 +78,10 @@
 
 **骨架输入：**
 ```html
-<div class="flex flex-row gap-4 items-center">
-  <span class="text-black text-base font-normal">年份</span>
-  <div class="flex flex-row gap-1 items-center w-[55px]">
-    <span class="text-[rgba(0,0,0,0.64)] text-base">2025</span>
+<div class="flex flex-row gap-[16px] items-center">
+  <span class="text-[#000000] text-[16px] font-[400]">年份</span>
+  <div class="flex flex-row gap-[4px] items-center w-[55px]">
+    <span class="text-[rgba(0,0,0,0.64)] text-[16px]">2025</span>
     <IconArrowHeavyRight class="w-[12px] h-[12px]" />
   </div>
 </div>

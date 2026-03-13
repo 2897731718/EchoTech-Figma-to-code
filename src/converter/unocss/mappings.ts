@@ -3,19 +3,12 @@ export interface UnoCSSMapping {
   class: string | ((value: string) => string)
 }
 
-// UnoCSS 间距单位：1 unit = 0.25rem = 4px
-// 例：gap-2 = 0.5rem = 8px，h-6 = 1.5rem = 24px
-const PX_TO_UNIT_RATIO = 0.25
-
-function pxToSpacing(px: number): string {
-  if (px === 0) return '0'
-  const rounded = Math.round(px)
-  const unit = Math.round(rounded * PX_TO_UNIT_RATIO * 4) / 4  // 保留 0.25 精度
-  // unit 是 0.25 整数倍则用 UnoCSS unit，否则用 [Npx]
-  if (unit * 4 === Math.round(unit * 4)) {
-    return String(unit)
-  }
-  return `[${rounded}px]`
+// 保留原始 px 值，供项目层（figma-context.md + skill）按自身规则换算
+function rawPx(value: string): string | null {
+  const match = value.match(/^(\d+(?:\.\d+)?)px$/)
+  if (!match) return null
+  const px = Math.round(parseFloat(match[1]))
+  return px === 0 ? '0' : `[${px}px]`
 }
 
 export const DISPLAY_MAPPINGS: Record<string, string> = {
@@ -52,19 +45,13 @@ export const JUSTIFY_CONTENT_MAPPINGS: Record<string, string> = {
 }
 
 export function convertSpacing(value: string): string | null {
-  const match = value.match(/^(\d+(?:\.\d+)?)px$/)
-  if (!match) return null
-  const px = parseFloat(match[1])
-  const spacing = pxToSpacing(px)
-  return `p-${spacing}`
+  const raw = rawPx(value)
+  return raw ? `p-${raw}` : null
 }
 
 export function convertGap(value: string): string | null {
-  const match = value.match(/^(\d+(?:\.\d+)?)px$/)
-  if (!match) return null
-  const px = parseFloat(match[1])
-  const spacing = pxToSpacing(px)
-  return `gap-${spacing}`
+  const raw = rawPx(value)
+  return raw ? `gap-${raw}` : null
 }
 
 export function convertPadding(value: string): string[] {
@@ -72,34 +59,26 @@ export function convertPadding(value: string): string[] {
   const classes: string[] = []
 
   if (parts.length === 1) {
-    const px = parseFloat(parts[0])
-    if (!isNaN(px)) classes.push(`p-${pxToSpacing(px)}`)
+    const raw = rawPx(parts[0])
+    if (raw) classes.push(`p-${raw}`)
   } else if (parts.length === 2) {
-    const py = parseFloat(parts[0])
-    const px = parseFloat(parts[1])
-    if (!isNaN(py) && !isNaN(px)) {
-      const sy = pxToSpacing(py)
-      const sx = pxToSpacing(px)
-      if (sy === sx) {
-        classes.push(`p-${sy}`)
-      } else {
-        classes.push(`py-${sy}`, `px-${sx}`)
-      }
+    const ry = rawPx(parts[0])
+    const rx = rawPx(parts[1])
+    if (ry && rx) {
+      if (ry === rx) classes.push(`p-${ry}`)
+      else classes.push(`py-${ry}`, `px-${rx}`)
     }
   } else if (parts.length === 4) {
-    const [top, right, bottom, left] = parts.map(parseFloat)
-    if ([top, right, bottom, left].every(v => !isNaN(v))) {
-      const st = pxToSpacing(top)
-      const sr = pxToSpacing(right)
-      const sb = pxToSpacing(bottom)
-      const sl = pxToSpacing(left)
-      if (st === sr && sr === sb && sb === sl) {
-        classes.push(`p-${st}`)
+    const raws = parts.map(rawPx)
+    if (raws.every(Boolean)) {
+      const [rt, rr, rb, rl] = raws as string[]
+      if (rt === rr && rr === rb && rb === rl) {
+        classes.push(`p-${rt}`)
       } else {
-        if (st === sb) classes.push(`py-${st}`)
-        else classes.push(`pt-${st}`, `pb-${sb}`)
-        if (sl === sr) classes.push(`px-${sl}`)
-        else classes.push(`pl-${sl}`, `pr-${sr}`)
+        if (rt === rb) classes.push(`py-${rt}`)
+        else classes.push(`pt-${rt}`, `pb-${rb}`)
+        if (rl === rr) classes.push(`px-${rl}`)
+        else classes.push(`pl-${rl}`, `pr-${rr}`)
       }
     }
   }
@@ -140,43 +119,19 @@ export function convertTextColor(value: string): string | null {
 }
 
 export function convertBorderRadius(value: string): string | null {
-  const match = value.match(/^(\d+(?:\.\d+)?)px$/)
-  if (!match) return null
-  const px = parseFloat(match[1])
-  if (px === 0) return null
-  return `rounded-${pxToSpacing(px)}`
+  const raw = rawPx(value)
+  if (!raw || raw === '0') return null
+  return `rounded-${raw}`
 }
 
 export function convertFontSize(value: string): string | null {
-  const match = value.match(/^(\d+(?:\.\d+)?)px$/)
-  if (!match) return null
-  const px = parseFloat(match[1])
-  const sizeMap: Record<number, string> = {
-    12: 'text-xs',
-    14: 'text-sm',
-    16: 'text-base',
-    18: 'text-lg',
-    20: 'text-xl',
-    24: 'text-2xl',
-    30: 'text-3xl',
-    36: 'text-4xl',
-  }
-  return sizeMap[px] ?? `text-[${px}px]`
+  const raw = rawPx(value)
+  return raw ? `text-${raw}` : null
 }
 
 export function convertFontWeight(value: string): string | null {
-  const weightMap: Record<string, string> = {
-    '100': 'font-thin',
-    '200': 'font-extralight',
-    '300': 'font-light',
-    '400': 'font-normal',
-    '500': 'font-medium',
-    '600': 'font-semibold',
-    '700': 'font-bold',
-    '800': 'font-extrabold',
-    '900': 'font-black'
-  }
-  return weightMap[value] || null
+  if (!value || value === '0') return null
+  return `font-[${value}]`
 }
 
 export function convertTextAlign(value: string): string | null {
@@ -190,20 +145,8 @@ export function convertTextAlign(value: string): string | null {
 }
 
 export function convertLineHeight(value: string): string | null {
-  const match = value.match(/^(\d+(?:\.\d+)?)px$/)
-  if (!match) return null
-  const px = parseFloat(match[1])
-  const leadingMap: Record<number, string> = {
-    16: 'leading-4',
-    20: 'leading-5',
-    22: 'leading-[22px]',
-    24: 'leading-6',
-    28: 'leading-7',
-    32: 'leading-8',
-    36: 'leading-9',
-    40: 'leading-10',
-  }
-  return leadingMap[Math.round(px)] ?? `leading-[${Math.round(px)}px]`
+  const raw = rawPx(value)
+  return raw ? `leading-${raw}` : null
 }
 
 /** 将 border-width / border-color / border-style 合并为 UnoCSS border 类 */
