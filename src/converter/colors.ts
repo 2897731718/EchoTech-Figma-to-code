@@ -1,5 +1,7 @@
 import type { Paint, RGB } from '../api/types'
 
+export type VariableMap = Map<string, string>
+
 export function rgbToHex(r: number, g: number, b: number, opacity?: number): string {
   const r255 = Math.round(Math.max(0, Math.min(1, r)) * 255)
   const g255 = Math.round(Math.max(0, Math.min(1, g)) * 255)
@@ -24,7 +26,7 @@ export function rgbToRgba(r: number, g: number, b: number, opacity?: number): st
   return `rgba(${r255}, ${g255}, ${b255}, ${a})`
 }
 
-export function convertPaintToColor(paint: Paint): string | null {
+export function convertPaintToColor(paint: Paint, variableMap?: VariableMap): string | null {
   if (paint.visible === false) {
     return null
   }
@@ -32,11 +34,15 @@ export function convertPaintToColor(paint: Paint): string | null {
   if (paint.type === 'SOLID' && paint.color) {
     const { r, g, b } = paint.color
     const opacity = paint.opacity ?? paint.color.a ?? 1
+    const rawColor = opacity === 1 ? rgbToHex(r, g, b) : rgbToRgba(r, g, b, opacity)
 
-    if (opacity === 1) {
-      return rgbToHex(r, g, b)
+    // 优先使用绑定的 Variable，带 fallback 原始色值（格式同 Figma CSS 面板：var(--text-1, #000)）
+    if (variableMap && paint.boundVariables?.color) {
+      const varName = variableMap.get(paint.boundVariables.color.id)
+      if (varName) return `var(${varName},${rawColor})`
     }
-    return rgbToRgba(r, g, b, opacity)
+
+    return rawColor
   }
 
   if (paint.type === 'GRADIENT_LINEAR' && paint.gradientStops) {

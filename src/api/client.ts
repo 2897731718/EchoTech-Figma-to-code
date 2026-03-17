@@ -64,7 +64,11 @@ export class FigmaAPIClient {
 
         return await response.json()
       } catch (error) {
-        if (error instanceof Error && error.message.includes('Rate limit')) {
+        // Rate limit 和 HTTP 错误（4xx/5xx）不重试
+        if (error instanceof Error && (
+          error.message.includes('Rate limit') ||
+          error.message.startsWith('Figma API error')
+        )) {
           throw error
         }
 

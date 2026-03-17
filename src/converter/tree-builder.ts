@@ -1,6 +1,7 @@
 import type { Node } from '../api/types'
 import type { ComponentNode, StyleConverter } from './generators/types'
 import { convertNodeToCSS } from './index'
+import type { VariableMap } from './colors'
 
 // ─── 策略二：预处理 - 折叠透传容器 ────────────────────────────────────────────
 
@@ -59,11 +60,12 @@ export function buildComponentTree(
   node: Node,
   styleConverter: StyleConverter,
   parent: Node | undefined,
-  nodeMap: Map<string, Node>
+  nodeMap: Map<string, Node>,
+  variableMap?: VariableMap
 ): ComponentNode | null {
   if (node.visible === false) return null
 
-  const css = convertNodeToCSS(node, parent, nodeMap)
+  const css = convertNodeToCSS(node, parent, nodeMap, variableMap)
 
   // 策略三：宽度自适应检测
   if (parent && css['width'] && css['height']) {
@@ -103,7 +105,7 @@ export function buildComponentTree(
   } else if (node.children && node.children.length > 0) {
     componentNode.children = []
     for (const child of node.children) {
-      const childNode = buildComponentTree(child, styleConverter, node, nodeMap)
+      const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap)
       if (childNode) {
         componentNode.children.push(childNode)
       }

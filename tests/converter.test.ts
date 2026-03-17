@@ -7,6 +7,7 @@ import {
   convertCornerRadius
 } from '../src/converter/styles'
 import { convertAutoLayout, type FrameNode } from '../src/converter/layout'
+import { convertNodeToCSS } from '../src/converter/index'
 import type { Paint } from '../src/api/types'
 
 describe('Color Converter', () => {
@@ -198,5 +199,55 @@ describe('Layout Converter', () => {
       const result = convertAutoLayout(node)
       expect(result).toEqual({})
     })
+  })
+
+  describe('Variable bindings in convertNodeToCSS', () => {
+    it('should apply variable to gap', () => {
+      const variableMap = new Map([['VariableID:spacing:1', '--spacing-md']])
+      const node = {
+        id: '1:1', name: 'Frame', type: 'FRAME',
+        layoutMode: 'HORIZONTAL', itemSpacing: 16,
+        primaryAxisAlignItems: 'MIN', counterAxisAlignItems: 'MIN',
+        boundVariables: { itemSpacing: { type: 'VARIABLE_ALIAS', id: 'VariableID:spacing:1' } },
+        absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 50 }
+      } as any
+      const css = convertNodeToCSS(node, undefined, new Map(), variableMap)
+      expect(css.gap).toBe('var(--spacing-md,16px)')
+    })
+
+    it('should apply variable to border-radius', () => {
+      const variableMap = new Map([['VariableID:radius:1', '--radius-sm']])
+      const node = {
+        id: '1:2', name: 'Rect', type: 'RECTANGLE',
+        cornerRadius: 8,
+        boundVariables: { cornerRadius: { type: 'VARIABLE_ALIAS', id: 'VariableID:radius:1' } },
+        absoluteBoundingBox: { x: 0, y: 0, width: 80, height: 80 }
+      } as any
+      const css = convertNodeToCSS(node, undefined, new Map(), variableMap)
+      expect(css['border-radius']).toBe('var(--radius-sm,8px)')
+    })
+  })
+})
+
+describe('IMAGE fill placeholder', () => {
+  it('should return placeholder for IMAGE fill', () => {
+    const fills: Paint[] = [{ type: 'IMAGE', imageHash: 'abc123def456' }]
+    const result = convertFillsToBackgroundColor(fills)
+    expect(result).toBe('url(figma-image:abc123def456)')
+  })
+
+  it('should return placeholder without hash when imageHash is missing', () => {
+    const fills: Paint[] = [{ type: 'IMAGE' }]
+    const result = convertFillsToBackgroundColor(fills)
+    expect(result).toBe('url(figma-image:unknown)')
+  })
+
+  it('should prefer SOLID fill over IMAGE fill', () => {
+    const fills: Paint[] = [
+      { type: 'SOLID', color: { r: 1, g: 0, b: 0 } },
+      { type: 'IMAGE', imageHash: 'abc123' }
+    ]
+    const result = convertFillsToBackgroundColor(fills)
+    expect(result).toBe('#ff0000')
   })
 })

@@ -30,8 +30,7 @@ export type {
 export {
   convertFigmaToCode,
   type ConvertOptions,
-  type ConvertResult,
-  type TokenValue
+  type ConvertResult
 } from './converter'
 
 export type { Framework, StyleFormat, ComponentNode } from './converter/generators/types'

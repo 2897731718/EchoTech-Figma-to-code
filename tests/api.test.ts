@@ -3,13 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FigmaAPIClient } from '../src/api/client'
 import type { FileResponse, MeResponse } from '../src/api/types'
 
-const mockFetch = vi.fn()
-
-global.fetch = mockFetch
+let mockFetch: ReturnType<typeof vi.fn>
 
 describe('FigmaAPIClient', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    mockFetch = vi.fn()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(mockFetch)
   })
 
   afterEach(() => {
@@ -60,7 +59,8 @@ describe('FigmaAPIClient', () => {
     it('should return false for invalid token', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 401
+        status: 401,
+        text: async () => 'Unauthorized'
       })
 
       const client = new FigmaAPIClient('invalid-token')
