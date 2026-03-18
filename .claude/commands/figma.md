@@ -58,7 +58,32 @@ npx figma-to-code $URL --framework=vue --style=unocss
 
 `Form` 自带行间分割线和布局，内部不需要再手动加 `DuDivider`。不满足时（只有 1-2 个零散输入框）直接用 `DuInput`，不强制套 Form。
 
-**第四步：输出**
+**第四步：输出主组件**
 
 - 指定了目标路径 → 写入文件
 - 未指定 → 输出到对话，由用户确认后保存
+
+**第五步：处理未识别的子组件（递归生成）**
+
+翻译完成后，检查骨架中所有带 `<!-- figma-node: xxx -->` 注释的标签：
+
+1. **对每个未识别的 INSTANCE**（未命中 `figma-context.md` 业务组件映射表的），询问用户：
+
+   > 发现未识别的子组件 `<ComponentName>`（figma-node: xxx），是否需要生成对应文件？如需要，请告知保存路径（如 `src/components/ComponentName.vue`）。
+
+2. **用户确认路径后**：
+   - 用该组件的 `figma-node` id 重新执行 CLI：
+     ```bash
+     npx figma-to-code <原始fileKey对应的url>&node-id=<componentId> --framework=vue --style=unocss
+     ```
+   - 对新骨架重复第三步的翻译流程
+   - 将结果写入用户指定路径
+   - 在 `figma-context.md` 的「业务组件映射」表中补充该条记录：
+     ```
+     | ComponentName | `ComponentName` | src/components/ComponentName.vue | 已生成 |
+     ```
+   - 回到主组件，将对应标签替换为真实组件，并在 `<script setup>` 中补充 import
+
+3. **用户跳过** → 保留占位标签，不处理
+
+4. 所有子组件处理完毕后，**输出最终完整的主组件代码**（含所有 import）。

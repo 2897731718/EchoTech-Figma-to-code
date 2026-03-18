@@ -8,7 +8,9 @@ import {
 } from '../src/converter/styles'
 import { convertAutoLayout, type FrameNode } from '../src/converter/layout'
 import { convertNodeToCSS } from '../src/converter/index'
-import type { Paint } from '../src/api/types'
+import { simplifyNode, buildComponentTree } from '../src/converter/tree-builder'
+import { createStyleConverter } from '../src/converter/styles/converter-factory'
+import type { Paint, Node } from '../src/api/types'
 
 describe('Color Converter', () => {
   describe('rgbToHex', () => {
@@ -226,6 +228,62 @@ describe('Layout Converter', () => {
       const css = convertNodeToCSS(node, undefined, new Map(), variableMap)
       expect(css['border-radius']).toBe('var(--radius-sm,8px)')
     })
+  })
+})
+
+describe('simplifyNode', () => {
+  const makeNode = (overrides: Partial<Node>): Node => ({
+    id: '1:1', name: 'Node', type: 'FRAME', ...overrides
+  })
+
+  it('默认情况下 INSTANCE 节点清空 children', () => {
+    const node = makeNode({
+      type: 'INSTANCE',
+      componentId: '99:1',
+      children: [makeNode({ id: '2:1', name: 'Child', type: 'TEXT' })]
+    })
+    const result = simplifyNode(node)
+    expect(result.children).toEqual([])
+  })
+
+  it('isRoot=true 时 COMPONENT 节点保留 children', () => {
+    const child = makeNode({ id: '2:1', name: 'Child', type: 'FRAME' })
+    const node = makeNode({ type: 'COMPONENT', children: [child] })
+    const result = simplifyNode(node, true)
+    expect(result.children).toHaveLength(1)
+    expect(result.children![0].id).toBe('2:1')
+  })
+
+  it('嵌套 COMPONENT 在非根位置仍被剪枝', () => {
+    const nested = makeNode({ id: '3:1', name: 'Nested', type: 'COMPONENT',
+      children: [makeNode({ id: '4:1', name: 'DeepChild', type: 'TEXT' })]
+    })
+    const root = makeNode({ type: 'FRAME', children: [nested] })
+    const result = simplifyNode(root, true)
+    expect(result.children![0].children).toEqual([])
+  })
+})
+
+describe('buildComponentTree - componentId 透传', () => {
+  const styleConverter = createStyleConverter('unocss')
+
+  it('INSTANCE 节点的 componentId 透传到 ComponentNode', () => {
+    const node: Node = {
+      id: '5:1', name: 'ProductCard', type: 'INSTANCE',
+      componentId: '10:99',
+      children: []
+    }
+    const result = buildComponentTree(node, styleConverter, undefined, new Map())
+    expect(result?.componentId).toBe('10:99')
+    expect(result?.tag).toBe('ProductCard')
+  })
+
+  it('普通 FRAME 节点不带 componentId', () => {
+    const node: Node = {
+      id: '6:1', name: 'Frame', type: 'FRAME', children: []
+    }
+    const result = buildComponentTree(node, styleConverter, undefined, new Map())
+    expect(result?.componentId).toBeUndefined()
   })
 })
 

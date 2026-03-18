@@ -48,6 +48,22 @@ describe('VueGenerator 模板生成', () => {
       expect(code).toContain('<div class="w-4 h-4" />')
     })
 
+    it('INSTANCE 节点有 componentId 时追加 figma-node 注释', () => {
+      const tree: ComponentNode = {
+        tag: 'ProductCard',
+        componentId: '12:345'
+      }
+      const code = generator.generate(tree, {})
+      expect(code).toContain('<ProductCard />')
+      expect(code).toContain('<!-- figma-node: 12:345 -->')
+    })
+
+    it('INSTANCE 节点无 componentId 时不输出注释', () => {
+      const tree: ComponentNode = { tag: 'SomeComp' }
+      const code = generator.generate(tree, {})
+      expect(code).not.toContain('figma-node')
+    })
+
     it('有子节点时正确嵌套', () => {
       const tree: ComponentNode = {
         tag: 'div',

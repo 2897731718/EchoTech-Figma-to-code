@@ -33,21 +33,21 @@ function isPassthrough(node: Node): boolean {
  * - 折叠透传容器（单子节点且无视觉样式）
  * - 对 INSTANCE 节点清空 children（不展开内部实现）
  */
-export function simplifyNode(node: Node): Node {
-  // 策略一：INSTANCE 不展开子节点
-  if (node.type === 'INSTANCE' || node.type === 'COMPONENT') {
+export function simplifyNode(node: Node, isRoot = false): Node {
+  // 策略一：INSTANCE / 嵌套 COMPONENT 不展开子节点（根节点除外）
+  if (!isRoot && (node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
     return { ...node, children: [] }
   }
 
   // 先递归简化 children
   const simplifiedChildren = (node.children ?? [])
     .filter(c => c.visible !== false)
-    .map(simplifyNode)
+    .map(c => simplifyNode(c))
 
   const nodeWithChildren = { ...node, children: simplifiedChildren }
 
-  // 策略二：折叠透传容器（简化后只剩一个子节点）
-  if (simplifiedChildren.length === 1 && isPassthrough(nodeWithChildren)) {
+  // 策略二：折叠透传容器（简化后只剩一个子节点，根节点不折叠）
+  if (!isRoot && simplifiedChildren.length === 1 && isPassthrough(nodeWithChildren)) {
     return simplifiedChildren[0]
   }
 
@@ -85,7 +85,8 @@ export function buildComponentTree(
   const componentNode: ComponentNode = {
     tag: getTagForNode(node),
     nodeId: node.id,
-    props: {}
+    props: {},
+    ...(node.componentId ? { componentId: node.componentId } : {})
   }
 
   if (styleResult.className) {

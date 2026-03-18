@@ -2,16 +2,19 @@
 
 从 Figma 链接到可用组件代码的自动化工具。
 
-核心思路：**不直接生成业务代码，而是提取结构骨架，再由 IDE AI 结合项目规范翻译为最终代码。**
+核心思路：**不直接生成业务代码，而是提取结构骨架，再由 IDE AI 结合项目规范翻译为最终代码。遇到未知子组件时自动递归生成。**
 
 ```
 Figma 链接
     ↓
-figma-to-code（提取骨架）
+figma-to-code（提取骨架，INSTANCE 节点附带 figma-node 注释）
     ↓
-IDE AI + 项目规范（翻译为业务代码）
+IDE AI + figma-context.md（翻译为业务代码）
+    ├── 命中已知基础组件（Button 等）→ 直接使用
+    ├── 命中已生成业务组件 → import 后使用
+    └── 未匹配 → 用 figma-node id 自动拉取子组件骨架，递归生成 .vue 文件
     ↓
-可用的 Vue / React 组件
+可用的 Vue / React 组件（含完整子组件树）
 ```
 
 ---
@@ -100,9 +103,11 @@ figma-to-code init --ui=your-ui-lib
 ```
 
 AI 会自动：
-1. 调用 CLI 提取 Figma 骨架
-2. 读取 `.claude/figma-context.md` 中的项目规范
-3. 生成符合项目风格的组件代码
+1. 调用 CLI 提取 Figma 骨架（INSTANCE 节点标注 `<!-- figma-node: xxx -->`）
+2. 读取 `.claude/figma-context.md` 中的项目规范和业务组件映射表
+3. 翻译主骨架为业务代码
+4. 遇到未匹配的 INSTANCE → 用 `figma-node` id 递归拉取子组件骨架 → 生成子组件文件 → 更新映射表
+5. 输出完整组件树
 
 ---
 
@@ -158,11 +163,22 @@ AI 会自动：
 | 配置项 | 说明 |
 |---|---|
 | 组件库 | 前缀、包名、常用组件的典型用法 |
-| 组件映射 | Figma 节点名 → 项目真实组件 |
+| **业务组件映射** | Figma 组件名 → 项目组件 / 文件路径，驱动递归生成决策 |
+| 组件映射规则 | Figma 节点名关键词 → 具体组件标签 |
 | UnoCSS 配置 | 间距单位（1unit = 1px 还是 4px）|
 | 设计 Token | 颜色、字体的 token 映射 |
 | 页面结构模板 | 标准页面外层结构 |
 | 生成规则 | 宽度处理、图标命名、动态绑定等约定 |
+
+**业务组件映射表维护说明：**
+
+每次递归生成新的子组件文件后，需在表格中补充一行，例如：
+
+```markdown
+| ProductCard | `ProductCard` | @/components/ProductCard.vue | 已生成 |
+```
+
+后续主组件翻译时识别到同名 INSTANCE，直接 import 该路径，不再重复生成。
 
 ---
 

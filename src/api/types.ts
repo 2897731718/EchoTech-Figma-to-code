@@ -48,6 +48,7 @@ export interface Node {
   rotation?: number
   pluginData?: unknown
   sharedPluginData?: unknown
+  componentId?: string
   componentPropertyReferences?: Record<string, string>
   boundVariables?: Record<string, VariableAlias>
   explicitVariableModes?: Record<string, string>

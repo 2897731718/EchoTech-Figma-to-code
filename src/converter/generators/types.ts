@@ -15,6 +15,7 @@ export interface ComponentNode {
   text?: string
   props?: Record<string, string>
   nodeId?: string
+  componentId?: string
 }
 
 export interface StyleConverter {

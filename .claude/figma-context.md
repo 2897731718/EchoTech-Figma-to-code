@@ -62,6 +62,31 @@
 
 ---
 
+## 业务组件映射
+
+骨架中 INSTANCE 节点会输出 `<!-- figma-node: xxx -->` 注释。翻译时按以下表格决策：
+
+| Figma 组件名（模糊匹配） | 项目组件 | 文件路径 | 备注 |
+|---|---|---|---|
+| icon/* / Icon* / Arrow* / Chevron* / Close* | `Icon` | - | 基础组件 |
+| Button* / Btn* / Submit* | `Button` | - | 基础组件 |
+| Input* / InputFrame* / TextField* | `DuInput` | - | 基础组件 |
+| Textarea* | `DuTextarea` | - | 基础组件 |
+| FormItem* | `FormItem` | - | 基础组件 |
+| Picker* / DatePicker* / Select* / Dropdown* | `DuSelect` | - | 基础组件 |
+| Divider* / Line* / Separator* | `DuDivider` | - | 基础组件 |
+| Popup* / Sheet* / BottomSheet* | `DuPopup` | - | 基础组件 |
+| Tag* | `DuTag` | - | 基础组件 |
+| Switch* | `DuSwitch` | - | 基础组件 |
+| Upload* | `DuUpload` | - | 基础组件 |
+
+> **匹配规则（按优先级）**：
+> 1. 文件路径为 `-` → 已知基础组件，直接翻译为对应标签，**不递归**
+> 2. 文件路径有值 → 已生成的业务组件，直接 import 使用，**不递归**
+> 3. 未匹配 → 询问用户是否生成、保存在哪里，确认后用 `figma-node` id 拉取骨架递归生成，完成后补充本表
+
+---
+
 ## 组件映射规则
 
 骨架中 INSTANCE 节点名 → 项目组件的映射逻辑：

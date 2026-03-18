@@ -22,9 +22,16 @@ export interface ConvertOptions {
   styleFormat?: StyleFormat
 }
 
+export interface InstanceComponent {
+  name: string
+  componentId: string
+}
+
 export interface ConvertResult {
   code: string
   styles: Record<string, string>
+  /** 骨架中识别到的 INSTANCE 组件列表，可用于递归生成子组件 */
+  instanceComponents: InstanceComponent[]
 }
 
 function findNodeById(nodes: Node[], nodeId: string): Node | null {
@@ -225,6 +232,8 @@ export async function convertFigmaToCode(
     depth: 10
   })
 
+  console.error('[figma-to-code] 文件数据获取完成')
+
   const nodeMap = buildNodeMap([fileData.document])
 
   let targetNode: Node | undefined
@@ -246,7 +255,7 @@ export async function convertFigmaToCode(
     throw new Error('No target node found')
   }
 
-  console.log(`[figma-to-code] 节点: ${targetNode.name} (${targetNode.type})`)
+  console.error(`[figma-to-code] 节点: ${targetNode.name} (${targetNode.type})`)
 
   const framework = options.framework ?? 'html'
   const styleFormat = options.styleFormat ?? 'css'
@@ -272,8 +281,8 @@ export async function convertFigmaToCode(
     // Variables API 不可用（非 Enterprise 或权限不足），正常降级
   }
 
-  // 预处理：折叠透传容器 + INSTANCE 剪枝
-  const simplifiedNode = simplifyNode(targetNode)
+  // 预处理：折叠透传容器 + INSTANCE 剪枝（根节点不剪枝）
+  const simplifiedNode = simplifyNode(targetNode, true)
   const nodeMapForStyles = buildNodeMap([simplifiedNode])
 
   const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap)
@@ -308,11 +317,25 @@ export async function convertFigmaToCode(
     collectStyles(targetNode)
   }
 
+  // 收集骨架中所有 INSTANCE 组件，供后续递归生成
+  function collectInstances(node: ComponentNode): InstanceComponent[] {
+    const result: InstanceComponent[] = []
+    if (node.componentId) {
+      result.push({ name: node.tag, componentId: node.componentId })
+    }
+    for (const child of node.children ?? []) {
+      result.push(...collectInstances(child))
+    }
+    return result
+  }
+
+  const instanceComponents = collectInstances(componentTree)
   const code = generator.generate(componentTree, styles)
-  console.log('\n[template]\n' + code)
+  console.error(`[figma-to-code] 骨架生成完成，共 ${instanceComponents.length} 个子组件`)
 
   return {
     code,
-    styles
+    styles,
+    instanceComponents
   }
 }

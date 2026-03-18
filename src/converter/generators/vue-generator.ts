@@ -42,7 +42,11 @@ export class VueGenerator implements CodeGenerator {
     }
 
     if (!node.children || node.children.length === 0) {
-      return `${indent}<${node.tag}${attrsStr} />`
+      // INSTANCE 节点：自闭合并附加 figma-node 注释供后续递归识别
+      const figmaComment = node.componentId
+        ? ` <!-- figma-node: ${node.componentId} -->`
+        : ''
+      return `${indent}<${node.tag}${attrsStr} />${figmaComment}`
     }
 
     let code = `${indent}<${node.tag}${attrsStr}>\n`

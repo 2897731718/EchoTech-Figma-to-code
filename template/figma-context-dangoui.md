@@ -21,6 +21,36 @@ import { Form, FormItem, DuPopup, DuTag, DuSwitch, DuTextarea, DuUpload } from '
 
 ---
 
+## 业务组件映射
+
+<!--
+骨架中未识别的 INSTANCE 节点会附带 <!-- figma-node: xxx --> 注释。
+翻译时按本表决策，三种情况：
+  1. 文件路径为 "-"  → 已知基础组件，直接使用，不递归
+  2. 文件路径有值    → 已生成的业务组件，直接 import，不递归
+  3. 未匹配          → 询问用户是否生成、保存在哪里，确认后递归拉取该 figma-node 生成子组件文件，完成后补充本表
+-->
+
+| Figma 组件名（模糊匹配） | 项目组件 | 文件路径 | 备注 |
+|---|---|---|---|
+| icon/* / Icon* / Arrow* / Chevron* / Close* | `Icon` | - | 基础组件 |
+| Button* / Btn* / Submit* | `Button` | - | 基础组件 |
+| Input* / InputFrame* / TextField* | `DuInput` | - | 基础组件 |
+| Textarea* | `DuTextarea` | - | 基础组件 |
+| FormItem* | `FormItem` | - | 基础组件 |
+| Picker* / DatePicker* / Select* / Dropdown* | `DuSelect` | - | 基础组件 |
+| Divider* / Line* / Separator* | `DuDivider` | - | 基础组件 |
+| Popup* / Sheet* / BottomSheet* | `DuPopup` | - | 基础组件 |
+| Tag* | `DuTag` | - | 基础组件 |
+| Switch* | `DuSwitch` | - | 基础组件 |
+| Upload* | `DuUpload` | - | 基础组件 |
+
+<!-- 每次递归生成新组件后，在此补充一行，例如：
+| ProductCard | `ProductCard` | src/components/ProductCard.vue | 已生成 |
+-->
+
+---
+
 ## 组件映射规则
 
 Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 组件。

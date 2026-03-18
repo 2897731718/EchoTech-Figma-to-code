@@ -95,7 +95,15 @@ const result = await convertFigmaToCode({
   nodeId,
   framework,
   styleFormat,
-  resolveVariables: false,
 })
 
+// 子组件列表输出到 stderr，供用户终端查看
+if (result.instanceComponents.length > 0) {
+  console.error('\n[figma-to-code] 识别到的子组件：')
+  for (const inst of result.instanceComponents) {
+    console.error(`  - ${inst.name}  figma-node: ${inst.componentId}`)
+  }
+}
+
+// 骨架代码输出到 stdout，供 Claude 读取
 console.log(result.code)
