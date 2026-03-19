@@ -35,10 +35,14 @@ pnpm add figma-to-code      # 项目内安装
 
 #### 获取 Token
 
-1. 打开 Figma，点击右上角头像 → **Settings**
+~~1. 打开 Figma，点击右上角头像 → **Settings**
 2. 左侧菜单选 **Security**
 3. 找到 **Personal access tokens** → 点击 **Generate new token**
-4. 填写名称，权限选 **Read-only**，生成后复制 token（只显示一次）
+4. 填写名称，权限选 **Read-only**，生成后复制 token（只显示一次）~~
+
+1. Figma 左上角figma logo
+2. help and acount -> account settings -> security  往底下滑动Personal access tokens -> generate new token
+
 
 #### 存储 Token
 
