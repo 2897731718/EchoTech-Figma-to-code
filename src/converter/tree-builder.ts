@@ -56,12 +56,23 @@ export function simplifyNode(node: Node, isRoot = false): Node {
 
 // ─── 构建组件树 ───────────────────────────────────────────────────────────────
 
+/** Variable name → i18n key: "09_Product/成交(Sold)" → "09_Product.Sold" */
+export function parseI18nKey(variableName: string): string {
+  const parts = variableName.split('/')
+  const keyParts = parts.map(part => {
+    const match = part.match(/\(([^)]+)\)$/)
+    return match ? match[1] : part
+  })
+  return keyParts.join('.')
+}
+
 export function buildComponentTree(
   node: Node,
   styleConverter: StyleConverter,
   parent: Node | undefined,
   nodeMap: Map<string, Node>,
-  variableMap?: VariableMap
+  variableMap?: VariableMap,
+  i18nMap?: Map<string, string>
 ): ComponentNode | null {
   if (node.visible === false) return null
 
@@ -103,10 +114,18 @@ export function buildComponentTree(
 
   if (node.type === 'TEXT') {
     componentNode.text = node.characters || ''
+    // i18n: 如果文本绑定了变量，解析出 i18n key
+    const charBinding = (node.boundVariables as Record<string, unknown>)?.characters as { id: string } | undefined
+    if (charBinding && i18nMap) {
+      const variableName = i18nMap.get(charBinding.id)
+      if (variableName) {
+        componentNode.i18nKey = parseI18nKey(variableName)
+      }
+    }
   } else if (node.children && node.children.length > 0) {
     componentNode.children = []
     for (const child of node.children) {
-      const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap)
+      const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap, i18nMap)
       if (childNode) {
         componentNode.children.push(childNode)
       }

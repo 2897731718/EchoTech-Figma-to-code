@@ -12,7 +12,7 @@ import { convertPaintToColor, type VariableMap } from './colors'
 import type { Framework, StyleFormat } from './generators/types'
 import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
-import { buildComponentTree, simplifyNode } from './tree-builder'
+import { buildComponentTree, simplifyNode, parseI18nKey } from './tree-builder'
 
 export interface ConvertOptions {
   fileKey: string
@@ -229,7 +229,7 @@ export async function convertFigmaToCode(
 
   const fileData = await client.getFile(options.fileKey, {
     ...(options.nodeId ? { ids: [options.nodeId] } : {}),
-    depth: 10
+    pluginData: 'shared'
   })
 
   console.error('[figma-to-code] 文件数据获取完成')
@@ -281,11 +281,25 @@ export async function convertFigmaToCode(
     // Variables API 不可用（非 Enterprise 或权限不足），正常降级
   }
 
+  // 提取 i18n 变量映射（由 Figma 插件写入 sharedPluginData）
+  let i18nMap: Map<string, string> | undefined
+  try {
+    const pluginData = (fileData.document as Record<string, unknown>).sharedPluginData as Record<string, Record<string, string>> | undefined
+    const variableMapJson = pluginData?.i18n_variable_exporter?.variableMap
+    if (variableMapJson) {
+      const parsed = JSON.parse(variableMapJson) as Record<string, string>
+      i18nMap = new Map(Object.entries(parsed))
+      console.error(`[figma-to-code] i18n 变量映射: ${i18nMap.size} 个`)
+    }
+  } catch {
+    // 无 i18n 插件数据，正常降级
+  }
+
   // 预处理：折叠透传容器 + INSTANCE 剪枝（根节点不剪枝）
   const simplifiedNode = simplifyNode(targetNode, true)
   const nodeMapForStyles = buildNodeMap([simplifiedNode])
 
-  const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap)
+  const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap, i18nMap)
   
   if (!componentTree) {
     throw new Error('Failed to build component tree')

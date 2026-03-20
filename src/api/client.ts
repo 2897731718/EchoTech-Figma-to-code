@@ -96,13 +96,16 @@ export class FigmaAPIClient {
     }
   }
 
-  async getFile(fileKey: string, options?: { ids?: string[]; depth?: number }): Promise<FileResponse> {
+  async getFile(fileKey: string, options?: { ids?: string[]; depth?: number; pluginData?: string }): Promise<FileResponse> {
     const params = new URLSearchParams()
     if (options?.ids) {
       params.append('ids', options.ids.join(','))
     }
     if (options?.depth !== undefined) {
       params.append('depth', options.depth.toString())
+    }
+    if (options?.pluginData) {
+      params.append('plugin_data', options.pluginData)
     }
 
     const query = params.toString()

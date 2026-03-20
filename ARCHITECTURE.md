@@ -198,6 +198,109 @@ Figma 原始节点树
 
 ---
 
+## i18n 变量支持
+
+### 背景
+
+设计团队通过内部 i18n 平台（lemon）维护多语言文案，使用 Figma 社区插件 [Export/Import Variables](https://www.figma.com/community/plugin/1256972111705530093) 将 i18n key 作为 Figma Variables 导入设计稿。
+
+Figma REST API 能在 TEXT 节点的 `boundVariables.characters` 中拿到 Variable 绑定的 ID，但**无法直接解析出变量名**（需要 Enterprise plan 的 `file_variables:read` 权限）。
+
+### 解决方案：Figma 插件 + sharedPluginData
+
+通过一个轻量 Figma 插件，利用插件 API（无权限限制）读取 Variable 名称，写入文件级 `sharedPluginData`。REST API 通过 `plugin_data=shared` 参数即可读取。
+
+```
+Figma 插件（一次性）                      figma-to-code（自动）
+┌─────────────────────┐                ┌──────────────────────────────┐
+│ 选中 Frame → 运行    │                │ REST API + plugin_data=shared │
+│ 遍历 TEXT 节点       │                │ 读取 sharedPluginData         │
+│ getVariableById()   │ ──写入文件──→   │ boundVariables.characters.id  │
+│ 存入 sharedPluginData│                │ 查映射表 → 解析 i18n key      │
+└─────────────────────┘                └──────────────────────────────┘
+```
+
+### 数据流
+
+```
+1. Figma 插件扫描 TEXT 节点
+   boundVariables.characters.id → figma.variables.getVariableById()
+   → 得到 Variable name（如 "09_Product/成交(Sold)"）
+
+2. 插件将 { VariableID → Variable name } 映射写入
+   figma.root.setSharedPluginData('i18n_variable_exporter', 'variableMap', JSON)
+
+3. figma-to-code 通过 REST API 读取
+   GET /files/:key?plugin_data=shared
+   → document.sharedPluginData.i18n_variable_exporter.variableMap
+
+4. Variable name 解析为 i18n key
+   "09_Product/成交(Sold)" → "09_Product.Sold"
+   "09_Product/Listing/价格走势(PriceTrend)" → "09_Product.Listing.PriceTrend"
+   规则：取每段路径括号内的英文，用 . 连接
+
+5. 骨架输出
+   Vue:   {{ t('09_Product.Sold') }}
+   React: {t('09_Product.Sold')}
+   HTML:  <!-- i18n: 09_Product.Sold -->Sold
+```
+
+### Variable name 解析规则
+
+Figma Variable name 格式为 `分类/中文(英文Key)`，多级用 `/` 分隔：
+
+| Variable name | 解析结果 |
+|---|---|
+| `09_Product/成交(Sold)` | `09_Product.Sold` |
+| `09_Product/新增在售(LatestListings)` | `09_Product.LatestListings` |
+| `09_Product/Listing/价格走势(PriceTrend)` | `09_Product.Listing.PriceTrend` |
+| `09_Product/Listing/Seller/已打烊(SellerClosed)` | `09_Product.Listing.Seller.SellerClosed` |
+
+### Figma 插件使用
+
+插件源码位于 `figma-plugin/` 目录。
+
+**安装：**
+1. Figma 桌面端 → 右键画布 → Plugins → Development → Import plugin from manifest...
+2. 选择 `figma-plugin/manifest.json`
+
+**使用：**
+1. 在设计稿中选中需要提取 i18n 的 Frame
+2. 右键 → Plugins → Development → i18n Variable Exporter
+3. 底部通知显示找到的变量数量
+4. 映射自动存入文件，后续 figma-to-code 会自动读取
+
+**注意事项：**
+- 插件采用增量合并，多次运行不会覆盖已有映射
+- 变量变更后需重新运行插件更新映射
+- 建议选中具体 Frame 运行，整页扫描节点过多可能卡顿
+
+### 相关文件
+
+| 文件 | 说明 |
+|---|---|
+| `figma-plugin/manifest.json` | 插件配置 |
+| `figma-plugin/code.js` | 插件逻辑：扫描 → 解析 → 写入 sharedPluginData |
+| `src/api/client.ts` | `getFile()` 支持 `pluginData` 参数 |
+| `src/converter/index.ts` | 提取 i18n 映射，传递给 tree-builder |
+| `src/converter/tree-builder.ts` | `parseI18nKey()` + TEXT 节点 i18n 绑定 |
+| `src/converter/generators/types.ts` | `ComponentNode.i18nKey` 字段 |
+| `src/converter/generators/vue-generator.ts` | 输出 `{{ t('key') }}` |
+| `src/converter/generators/react-generator.ts` | 输出 `{t('key')}` |
+| `src/converter/generators/html-generator.ts` | 输出 `<!-- i18n: key -->` |
+
+### 为什么不用其他方案
+
+| 方案 | 问题 |
+|---|---|
+| Figma Variables REST API | 需要 Enterprise plan (`file_variables:read` scope) |
+| 插件导出 tokens.json 匹配 | 导出的 VariableID 是库文件 ID，与设计稿引用 ID 不一致 |
+| 文本值反查 lemon i18n JSON | 文本不唯一（如 "Sold" 有多个 key 对应） |
+| 文本值 + 上下文模糊匹配 | 不够准确，无法保证正确性 |
+| Dev Mode MCP | MCP 无法从 CLI 包调用，只能在 IDE 交互中使用 |
+
+---
+
 ## 当前局限
 
 - **图标无法还原**：Figma vector 节点只能拿到尺寸和颜色，无法得知是什么图标
