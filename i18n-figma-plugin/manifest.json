@@ -1,0 +1,9 @@
+{
+  "name": "i18n Variable Exporter",
+  "id": "0000000000000000001",
+  "api": "1.0.0",
+  "main": "code.js",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": ["figma", "dev"]
+}

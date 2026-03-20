@@ -33,7 +33,8 @@ export class ReactGenerator implements CodeGenerator {
     const attrsStr = attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
 
     if (node.text !== undefined) {
-      return `${indent}<${node.tag}${attrsStr}>${node.text}</${node.tag}>`
+      const content = node.i18nKey ? `{t('${node.i18nKey}')}` : node.text
+      return `${indent}<${node.tag}${attrsStr}>${content}</${node.tag}>`
     }
 
     if (!node.children || node.children.length === 0) {

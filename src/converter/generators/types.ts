@@ -13,6 +13,7 @@ export interface ComponentNode {
   style?: Record<string, string>
   children?: ComponentNode[]
   text?: string
+  i18nKey?: string
   props?: Record<string, string>
   nodeId?: string
   componentId?: string
