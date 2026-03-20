@@ -115,6 +115,58 @@ AI 会自动：
 
 ---
 
+## i18n 支持
+
+figma-to-code 可自动识别绑定了 Figma Variables 的 i18n 文本，输出 `{{ t('key') }}` 而非静态文字。
+
+### 前提条件
+
+设计团队使用 [Export/Import Variables](https://www.figma.com/community/plugin/1256972111705530093) 插件将 i18n key 导入 Figma 作为 Variables。
+
+### 配置步骤
+
+**1. 安装 Figma 插件（一次性）**
+
+在 Figma 桌面端：右键画布 → Plugins → Development → Import plugin from manifest... → 选择本项目的 `figma-plugin/manifest.json`。
+
+**2. 运行插件导出映射（每个文件跑一次）**
+
+1. 在设计稿中选中需要提取的 Frame
+2. 右键 → Plugins → Development → **i18n Variable Exporter**
+3. 底部通知显示找到的变量数量，映射自动存入文件
+
+> 插件采用增量合并，多次运行不会覆盖。变量变更后重新运行即可。
+
+**3. 正常使用 figma-to-code**
+
+无需额外参数，工具会自动读取映射并输出 i18n key：
+
+```html
+<!-- 没有 i18n 绑定 -->
+<span>3344</span>
+
+<!-- 有 i18n 绑定，自动输出 -->
+<span>{{ t('09_Product.Sold') }}</span>
+<span>{{ t('09_Product.LatestListings') }}</span>
+```
+
+### 工作原理
+
+```
+Figma 插件                              figma-to-code
+┌──────────────────────┐              ┌─────────────────────────────┐
+│ 扫描 TEXT 节点        │              │ REST API + plugin_data=shared│
+│ getVariableById()    │ ──存入文件──→ │ 读取 sharedPluginData        │
+│ 写入 sharedPluginData │              │ VariableID → 变量名 → i18n key│
+└──────────────────────┘              └─────────────────────────────┘
+```
+
+Variable name `09_Product/成交(Sold)` 解析为 i18n key `09_Product.Sold`（取每段路径括号内的英文，用 `.` 连接）。
+
+详细技术方案见 [ARCHITECTURE.md](./ARCHITECTURE.md#i18n-变量支持)。
+
+---
+
 ## 生成效果对比
 
 **Figma 骨架（中间产物，不直接使用）：**
