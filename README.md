@@ -81,8 +81,10 @@ figma-to-code init --ui=your-ui-lib
 .claude/
 ├── commands/
 │   └── figma.md          # AI 调用的 skill（无需修改）
-└── figma-context.md      # 项目规范（需要填写）
+└── figma-context.md      # 项目规范（可自行修改维护）
 ```
+
+若已有对应文件，不会覆盖，需要重新初始化请先删除对应 figma-context.md
 
 ### 第三步：填写项目规范
 

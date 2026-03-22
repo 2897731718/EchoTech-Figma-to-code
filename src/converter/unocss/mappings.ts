@@ -109,6 +109,8 @@ export function convertColor(value: string): string | null {
   if (value === '#ffffff' || value === 'rgb(255, 255, 255)') return 'bg-white'
   if (value === '#000000' || value === 'rgb(0, 0, 0)') return 'bg-black'
   if (value.startsWith('#') || value.startsWith('rgb')) return `bg-[${value}]`
+  // 保留 CSS Variable（含 Figma 别名），让 AI 根据变量名映射项目 token
+  if (value.startsWith('var(')) return `bg-[${value}]`
   return null
 }
 

@@ -13,9 +13,15 @@ import { describe, expect, it } from 'vitest'
 import { convertFigmaToCode, FigmaAPIClient, readFigmaPAT } from '../src/index'
 
 // 从环境变量或直接修改此处粘贴链接
+// 表单填写
 // const FIGMA_URL = 'https://www.figma.com/design/Vzq8cBkRTFu8Oew9GMSMVx/46_%E5%95%86%E5%AE%B6%E5%8A%A9%E6%89%8B%E5%B7%A5%E4%BD%9C%E5%8F%B0-%F0%9F%A9%B5?node-id=8746-66493&m=dev' ?? ''
-// const FIGMA_URL = 'https://www.figma.com/design/Vzq8cBkRTFu8Oew9GMSMVx/46_%E5%95%86%E5%AE%B6%E5%8A%A9%E6%89%8B%E5%B7%A5%E4%BD%9C%E5%8F%B0-%F0%9F%A9%B5?node-id=7626-96347&m=dev' ?? ''
-const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5% 9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=3-15932&m=dev'
+
+// 客服聊天
+// const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5% 9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=3-15932&m=dev'
+
+// 售后详情
+const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5%9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=2853-115681&m=dev'
+
 /**
  * 解析 Figma URL 中的 fileKey 和 nodeId
  * 支持格式：

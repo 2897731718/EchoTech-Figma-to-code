@@ -134,3 +134,4 @@ import { Button, DuInput } from '@duxui/vue'
 - 宽度统一用 `w-full`，不写死像素值
 - 图标尺寸从骨架的 `w-[Npx]` 读取，转为 `:size="N"`
 - 列表数据、Picker 选项等动态数据加 `TODO: 接口` 注释
+- **颜色用 token**：优先查上方颜色 token 表；找不到对应 token 时，用 UnoCSS hex 短语法替代（`text-[#f96464]` → `c-hex-f96464`，`bg-[#f96464]` → `bg-hex-f96464`，`border-[#f96464]` → `b-hex-f96464`），不要保留 `text-[#xxxxxx]` 写法
