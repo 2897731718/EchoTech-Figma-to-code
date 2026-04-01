@@ -171,7 +171,8 @@ describe('Layout Converter', () => {
 
       const result = convertAutoLayout(node)
       expect(result.display).toBe('flex')
-      expect(result['flex-direction']).toBe('row')
+      // row 是默认值，不输出
+      expect(result['flex-direction']).toBeUndefined()
       expect(result.gap).toBe('16px')
       expect(result['justify-content']).toBe('center')
       expect(result['align-items']).toBe('center')

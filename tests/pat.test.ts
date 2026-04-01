@@ -126,7 +126,17 @@ describe('PAT Reader', () => {
   })
 
   describe('readFigmaPAT', () => {
-    it('should return PAT from env first', async () => {
+    it('should return PAT from .env.local first', async () => {
+      // .env.local 优先级最高
+      vi.mocked(existsSync).mockReturnValue(true)
+      vi.mocked(readFileSync).mockReturnValue('FIGMA_PAT=local-token')
+      process.env.FIGMA_PAT = 'env-token'
+      const result = await readFigmaPAT()
+      expect(result).toBe('local-token')
+    })
+
+    it('should fallback to env var when .env.local not found', async () => {
+      vi.mocked(existsSync).mockReturnValue(false)
       process.env.FIGMA_PAT = 'env-token'
       const result = await readFigmaPAT()
       expect(result).toBe('env-token')
@@ -160,7 +170,7 @@ describe('PAT Reader', () => {
         writable: true
       })
 
-      await expect(readFigmaPAT()).rejects.toThrow('Figma PAT not found')
+      await expect(readFigmaPAT()).rejects.toThrow('未找到 Figma PAT')
 
       Object.defineProperty(process, 'platform', {
         value: originalPlatform,

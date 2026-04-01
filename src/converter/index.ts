@@ -328,7 +328,7 @@ export async function convertFigmaToCode(
       }
     }
 
-    collectStyles(targetNode)
+    collectStyles(simplifiedNode)
   }
 
   // 收集骨架中所有 INSTANCE 组件，供后续递归生成

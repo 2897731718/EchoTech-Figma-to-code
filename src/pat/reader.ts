@@ -10,11 +10,7 @@ function isMacOS(): boolean {
 }
 
 export function readPATFromEnv(): string | null {
-  const envValue = process.env.FIGMA_PAT
-  if (envValue && envValue.trim().length > 0) {
-    return envValue.trim()
-  }
-
+  // 优先读取项目级 .env.local（优先级高于环境变量）
   const projectRoot = cwd()
   const envLocalPath = join(projectRoot, '.env.local')
 
@@ -37,9 +33,15 @@ export function readPATFromEnv(): string | null {
           return envValue.replace(/^["']|["']$/g, '')
         }
       }
-    } catch (error) {
-      return null
+    } catch {
+      // .env.local 读取失败，继续尝试环境变量
     }
+  }
+
+  // 最后检查环境变量
+  const envValue = process.env.FIGMA_PAT
+  if (envValue && envValue.trim().length > 0) {
+    return envValue.trim()
   }
 
   return null
@@ -79,9 +81,11 @@ export async function readFigmaPAT(): Promise<string> {
   }
 
   throw new Error(
-    'Figma PAT not found. Please configure it using one of the following methods:\n' +
-      '1. Set FIGMA_PAT in .env.local file in project root\n' +
-      '2. Store in macOS Keychain with service name FIGMA_PAT or FIGMA_PAT_GLOBAL\n' +
-      '   Command: security add-generic-password -a "$(whoami)" -s FIGMA_PAT_GLOBAL -w "<YOUR_TOKEN>"'
+    '未找到 Figma PAT，请通过以下任一方式配置：\n\n' +
+      '  方式一：macOS Keychain（推荐，跨项目共用）\n' +
+      '    security add-generic-password -a "$(whoami)" -s FIGMA_PAT_GLOBAL -w "你的TOKEN"\n\n' +
+      '  方式二：项目 .env.local\n' +
+      '    echo \'FIGMA_PAT=你的TOKEN\' >> .env.local\n\n' +
+      '  获取 Token：Figma 左上角 Logo → Help and account → Account settings → Security → Personal access tokens'
   )
 }

@@ -20,30 +20,35 @@ export function convertAutoLayout(node: FrameNode): Record<string, string> {
   }
 
   css.display = 'flex'
-  css['flex-direction'] = node.layoutMode === 'HORIZONTAL' ? 'row' : 'column'
+  // row 是 flex 默认值，仅 column 时输出
+  if (node.layoutMode === 'VERTICAL') {
+    css['flex-direction'] = 'column'
+  }
 
   if (typeof node.itemSpacing === 'number') {
     css.gap = `${node.itemSpacing}px`
   }
 
-  if (node.primaryAxisAlignItems) {
+  // MIN (flex-start) 是默认值，不输出
+  if (node.primaryAxisAlignItems && node.primaryAxisAlignItems !== 'MIN') {
     const justifyMap: Record<string, string> = {
-      MIN: 'flex-start',
       CENTER: 'center',
       MAX: 'flex-end',
       SPACE_BETWEEN: 'space-between'
     }
-    css['justify-content'] = justifyMap[node.primaryAxisAlignItems] || 'flex-start'
+    const val = justifyMap[node.primaryAxisAlignItems]
+    if (val) css['justify-content'] = val
   }
 
-  if (node.counterAxisAlignItems) {
+  // MIN (flex-start / stretch) 是默认值，不输出
+  if (node.counterAxisAlignItems && node.counterAxisAlignItems !== 'MIN') {
     const alignMap: Record<string, string> = {
-      MIN: 'flex-start',
       CENTER: 'center',
       MAX: 'flex-end',
       BASELINE: 'baseline'
     }
-    css['align-items'] = alignMap[node.counterAxisAlignItems] || 'flex-start'
+    const val = alignMap[node.counterAxisAlignItems]
+    if (val) css['align-items'] = val
   }
 
   if (
@@ -60,7 +65,7 @@ export function convertAutoLayout(node: FrameNode): Record<string, string> {
       if (node.paddingTop !== 0) {
         css.padding = `${node.paddingTop}px`
       }
-    } else {
+    } else if (node.paddingTop !== 0 || node.paddingRight !== 0 || node.paddingBottom !== 0 || node.paddingLeft !== 0) {
       css.padding = `${node.paddingTop}px ${node.paddingRight}px ${node.paddingBottom}px ${node.paddingLeft}px`
     }
   }
@@ -111,11 +116,9 @@ export function calculateConstraints(
     case 'MAX':
       css.right = `${right}px`
       break
-    case 'CENTER': {
-      const offset = nodeWidth / 2 + (parentWidth / 2 - nodeWidth / 2 - left)
-      css.left = `calc(50% - ${offset}px)`
+    case 'CENTER':
+      css.left = `calc(50% - ${parentWidth / 2 - left}px)`
       break
-    }
     case 'STRETCH':
       css.left = `${left}px`
       css.right = `${right}px`
@@ -133,11 +136,9 @@ export function calculateConstraints(
     case 'MAX':
       css.bottom = `${bottom}px`
       break
-    case 'CENTER': {
-      const offset = nodeHeight / 2 + (parentHeight / 2 - nodeHeight / 2 - top)
-      css.top = `calc(50% - ${offset}px)`
+    case 'CENTER':
+      css.top = `calc(50% - ${parentHeight / 2 - top}px)`
       break
-    }
     case 'STRETCH':
       css.top = `${top}px`
       css.bottom = `${bottom}px`
