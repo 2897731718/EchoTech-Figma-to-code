@@ -1,4 +1,4 @@
-export type Framework = 'html' | 'vue' | 'react'
+export type Framework = 'html' | 'vue' | 'react' | 'flutter'
 export type StyleFormat = 'css' | 'unocss' | 'inline'
 
 export interface GeneratorOptions {
@@ -17,6 +17,8 @@ export interface ComponentNode {
   props?: Record<string, string>
   nodeId?: string
   componentId?: string
+  /** 结构化样式（从 Figma 节点直接提取，移动端生成器使用） */
+  parsedStyles?: import('./style-parser').ParsedStyles
 }
 
 export interface StyleConverter {

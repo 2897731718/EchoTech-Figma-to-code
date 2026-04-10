@@ -2,6 +2,7 @@ import type { Framework, CodeGenerator } from './types'
 import { HTMLGenerator } from './html-generator'
 import { VueGenerator } from './vue-generator'
 import { ReactGenerator } from './react-generator'
+import { FlutterGenerator } from './flutter-generator'
 
 export function createGenerator(framework: Framework): CodeGenerator {
   switch (framework) {
@@ -11,6 +12,8 @@ export function createGenerator(framework: Framework): CodeGenerator {
       return new VueGenerator()
     case 'react':
       return new ReactGenerator()
+    case 'flutter':
+      return new FlutterGenerator()
     default:
       return new HTMLGenerator()
   }
