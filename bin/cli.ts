@@ -116,14 +116,22 @@ if (command === 'init') {
   }
 
   // ── 完成提示 ────────────────────────────────────────────────
-  console.log('\n✅ 安装完成！\n')
-  if (uiLib === 'kuril') {
+  const allExisted = skillsToCopy.every(f => existsSync(resolve(commandsDir, f))) && existsSync(contextDst)
+
+  if (allExisted) {
+    // 非首次安装，文件都已存在，本次主要是验证环境
+    console.log('\n✅ 环境验证通过！\n')
+    console.log('所有配置文件已就绪，Figma PAT 已配置。')
+    console.log('可以开始使用了：')
+  } else {
+    console.log('\n✅ 安装完成！\n')
     console.log('使用方式：')
+  }
+
+  if (uiLib === 'kuril') {
     console.log('  1. 在 IDE 中使用 /figma-flutter <figma-url> 生成 Flutter 代码')
     console.log('  2. 使用 /collect-patterns <path> 采集组件写法和代码风格')
-    console.log('  3. 编辑 .claude/figma-context.md 补充项目特有的组件映射')
   } else {
-    console.log('使用方式：')
     console.log('  1. 在 IDE 中使用 /figma <figma-url> 生成代码')
     console.log('  2. 编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
   }
