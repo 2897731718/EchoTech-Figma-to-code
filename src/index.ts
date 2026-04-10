@@ -44,6 +44,9 @@ export {
   type FrameNode
 } from './converter/layout'
 
+export { type ParsedStyles } from './converter/generators/style-parser'
+export { extractParsedStyles } from './converter/tree-builder'
+
 export {
   convertFillsToBackgroundColor,
   convertStrokesToBorder,
