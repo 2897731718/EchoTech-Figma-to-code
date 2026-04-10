@@ -23,7 +23,7 @@ const command = args[0]
 // ── init 子命令 ────────────────────────────────────────────────────────────
 
 if (command === 'init') {
-  // figma-to-code init [--ui=your-ui-lib|kuril] [--skip-check]
+  // figma-to-code init [--ui=your-ui-lib|custom-flutter] [--skip-check]
   const uiLib = args.find(a => a.startsWith('--ui='))?.split('=')[1]
   const skipCheck = args.includes('--skip-check')
 
@@ -81,20 +81,17 @@ if (command === 'init') {
   mkdirSync(commandsDir, { recursive: true })
 
   // 根据 UI 库选择要复制的 skill 列表
-  const skillsToCopy = uiLib === 'kuril'
-    ? ['figma-flutter.md', 'collect-patterns.md']
+  const skillsToCopy = uiLib === 'custom-flutter'
+    ? ['figma-flutter.md', 'collect-patterns.md', 'update-context.md']
     : ['figma.md']
 
   for (const skillFile of skillsToCopy) {
     const skillSrc = resolve(pkgRoot, '.claude/commands', skillFile)
     const skillDst = resolve(commandsDir, skillFile)
     if (!existsSync(skillSrc)) continue
-    if (existsSync(skillDst)) {
-      console.log(`⚠ .claude/commands/${skillFile} 已存在，跳过`)
-    } else {
-      copyFileSync(skillSrc, skillDst)
-      console.log(`✔ 已创建 .claude/commands/${skillFile}`)
-    }
+    // skill 文件由工具管理，每次覆盖到最新版
+    copyFileSync(skillSrc, skillDst)
+    console.log(`✔ 已更新 .claude/commands/${skillFile}`)
   }
 
   // 选择 context 模板
@@ -104,7 +101,7 @@ if (command === 'init') {
 
   if (!existsSync(contextSrc)) {
     console.error(`✖ 未找到模板：${templateName}`)
-    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-kuril.md`)
+    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-custom-flutter.md`)
     process.exit(1)
   }
 
@@ -116,24 +113,21 @@ if (command === 'init') {
   }
 
   // ── 完成提示 ────────────────────────────────────────────────
-  const allExisted = skillsToCopy.every(f => existsSync(resolve(commandsDir, f))) && existsSync(contextDst)
+  console.log('\n✅ 安装完成！\n')
 
-  if (allExisted) {
-    // 非首次安装，文件都已存在，本次主要是验证环境
-    console.log('\n✅ 环境验证通过！\n')
-    console.log('所有配置文件已就绪，Figma PAT 已配置。')
-    console.log('可以开始使用了：')
-  } else {
-    console.log('\n✅ 安装完成！\n')
+  if (uiLib === 'custom-flutter') {
     console.log('使用方式：')
-  }
-
-  if (uiLib === 'kuril') {
-    console.log('  1. 在 IDE 中使用 /figma-flutter <figma-url> 生成 Flutter 代码')
-    console.log('  2. 使用 /collect-patterns <path> 采集组件写法和代码风格')
+    console.log('  /figma-flutter <figma-url>       生成 Flutter 代码')
+    console.log('  /collect-patterns <path>         采集组件写法和代码风格')
+    console.log('  /update-context                  更新基础规范（保留自定义内容）')
+    console.log('')
+    console.log('提示：')
+    console.log('  - .claude/commands/ 下的 skill 文件由工具管理，无需提交到 git')
+    console.log('  - .claude/figma-context.md 是项目配置，建议提交到 git')
   } else {
-    console.log('  1. 在 IDE 中使用 /figma <figma-url> 生成代码')
-    console.log('  2. 编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
+    console.log('使用方式：')
+    console.log('  /figma <figma-url>               生成代码')
+    console.log('  编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
   }
   process.exit(0)
 }
