@@ -46,6 +46,7 @@ export {
 
 export { type ParsedStyles } from './converter/generators/style-parser'
 export { extractParsedStyles } from './converter/tree-builder'
+export { loadAnnotationMap, buildComponentClassNameMap } from './converter/annotation'
 
 export {
   convertFillsToBackgroundColor,

@@ -13,6 +13,7 @@ import type { Framework, StyleFormat } from './generators/types'
 import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
 import { buildComponentTree, simplifyNode, parseI18nKey } from './tree-builder'
+import { loadAnnotationMap, buildComponentClassNameMap } from './annotation'
 
 export interface ConvertOptions {
   fileKey: string
@@ -241,7 +242,18 @@ export async function convertFigmaToCode(
   if (options.nodeId) {
     targetNode = findNodeById([fileData.document], options.nodeId) || undefined
     if (!targetNode) {
-      throw new Error(`Node with id ${options.nodeId} not found`)
+      // ids 参数可能导致节点不在返回的子树中（如组件库中的 componentId），
+      // 尝试不带 ids 重新获取完整文件
+      console.error(`[figma-to-code] 节点 ${options.nodeId} 未在子树中找到，尝试获取完整文件...`)
+      const fullFileData = await client.getFile(options.fileKey, { pluginData: 'shared' })
+      targetNode = findNodeById([fullFileData.document], options.nodeId) || undefined
+      if (targetNode) {
+        // 用完整文件重建 nodeMap
+        const fullNodeMap = buildNodeMap([fullFileData.document])
+        Object.assign(nodeMap, fullNodeMap)
+      } else {
+        throw new Error(`Node with id ${options.nodeId} not found（该节点可能在外部组件库中，无法直接获取）`)
+      }
     }
   } else {
     if (fileData.document.children && fileData.document.children.length > 0) {
@@ -295,11 +307,25 @@ export async function convertFigmaToCode(
     // 无 i18n 插件数据，正常降级
   }
 
+  // 组件映射：通过 annotation_config 将 componentKey → Flutter 类名
+  let componentClassNameMap: Map<string, string> | undefined
+  if (framework === 'flutter') {
+    try {
+      const annotationMap = await loadAnnotationMap('flutter')
+      if (annotationMap.size > 0) {
+        componentClassNameMap = buildComponentClassNameMap(fileData.components ?? {}, annotationMap)
+        console.error(`[figma-to-code] 组件类名映射: ${componentClassNameMap.size} 个`)
+      }
+    } catch {
+      // annotation_config 不可用，降级用节点名
+    }
+  }
+
   // 预处理：折叠透传容器 + INSTANCE 剪枝（根节点不剪枝）
   const simplifiedNode = simplifyNode(targetNode, true)
   const nodeMapForStyles = buildNodeMap([simplifiedNode])
 
-  const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap, i18nMap)
+  const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap, i18nMap, componentClassNameMap)
   
   if (!componentTree) {
     throw new Error('Failed to build component tree')

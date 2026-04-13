@@ -80,18 +80,18 @@ if (command === 'init') {
 
   mkdirSync(commandsDir, { recursive: true })
 
-  // 根据 UI 库选择要复制的 skill 列表
-  const skillsToCopy = uiLib === 'custom-flutter'
-    ? ['figma-flutter.md', 'collect-patterns.md', 'update-context.md']
-    : ['figma.md']
-
-  for (const skillFile of skillsToCopy) {
-    const skillSrc = resolve(pkgRoot, '.claude/commands', skillFile)
-    const skillDst = resolve(commandsDir, skillFile)
-    if (!existsSync(skillSrc)) continue
-    // skill 文件由工具管理，每次覆盖到最新版
-    copyFileSync(skillSrc, skillDst)
-    console.log(`✔ 已更新 .claude/commands/${skillFile}`)
+  // 复制 skill 文件（仅 Web 端，Flutter 端不再需要 skill）
+  if (uiLib !== 'custom-flutter') {
+    const skillSrc = resolve(pkgRoot, '.claude/commands/figma.md')
+    const skillDst = resolve(commandsDir, 'figma.md')
+    if (existsSync(skillSrc)) {
+      if (existsSync(skillDst)) {
+        console.log('⚠ .claude/commands/figma.md 已存在，跳过')
+      } else {
+        copyFileSync(skillSrc, skillDst)
+        console.log('✔ 已创建 .claude/commands/figma.md')
+      }
+    }
   }
 
   // 选择 context 模板
@@ -117,13 +117,9 @@ if (command === 'init') {
 
   if (uiLib === 'custom-flutter') {
     console.log('使用方式：')
-    console.log('  /figma-flutter <figma-url>       生成 Flutter 代码')
-    console.log('  /collect-patterns <path>         采集组件写法和代码风格')
-    console.log('  /update-context                  更新基础规范（保留自定义内容）')
+    console.log('  figma-to-code <figma-url> --framework=flutter   生成 Flutter 骨架')
     console.log('')
-    console.log('提示：')
-    console.log('  - .claude/commands/ 下的 skill 文件由工具管理，无需提交到 git')
-    console.log('  - .claude/figma-context.md 是项目配置，建议提交到 git')
+    console.log('组件映射通过远程配置自动加载，INSTANCE 节点会标注正确的 Flutter 类名。')
   } else {
     console.log('使用方式：')
     console.log('  /figma <figma-url>               生成代码')

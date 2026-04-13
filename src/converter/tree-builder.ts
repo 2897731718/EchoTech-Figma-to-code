@@ -75,7 +75,8 @@ export function buildComponentTree(
   parent: Node | undefined,
   nodeMap: Map<string, Node>,
   variableMap?: VariableMap,
-  i18nMap?: Map<string, string>
+  i18nMap?: Map<string, string>,
+  componentClassNameMap?: Map<string, string>
 ): ComponentNode | null {
   if (node.visible === false) return null
 
@@ -105,7 +106,7 @@ export function buildComponentTree(
   }
 
   const componentNode: ComponentNode = {
-    tag: getTagForNode(node),
+    tag: getTagForNode(node, componentClassNameMap),
     nodeId: node.id,
     props: {},
     ...(node.componentId ? { componentId: node.componentId } : {}),
@@ -137,7 +138,7 @@ export function buildComponentTree(
   } else if (node.children && node.children.length > 0) {
     componentNode.children = []
     for (const child of node.children) {
-      const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap, i18nMap)
+      const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap, i18nMap, componentClassNameMap)
       if (childNode) {
         componentNode.children.push(childNode)
       }
@@ -299,12 +300,17 @@ function getContentWidth(parent: Node): number | null {
   return box.width - pl - pr
 }
 
-function getTagForNode(node: Node): string {
+function getTagForNode(node: Node, componentClassNameMap?: Map<string, string>): string {
   switch (node.type) {
     case 'TEXT':
       return 'span'
     case 'INSTANCE':
     case 'COMPONENT':
+      // 优先用 annotation_config 精确映射
+      if (node.componentId && componentClassNameMap) {
+        const className = componentClassNameMap.get(node.componentId)
+        if (className) return className
+      }
       return nameToPascalCase(node.name)
     case 'FRAME':
     case 'GROUP':
