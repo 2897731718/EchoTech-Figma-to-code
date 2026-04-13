@@ -81,30 +81,35 @@ export function buildComponentTree(
 
   const css = convertNodeToCSS(node, parent, nodeMap, variableMap)
 
-  // 策略三：宽度自适应检测
+  // 策略三：宽度自适应检测（先处理 CSS）
+  let autoWidth = false
   if (parent && css['width'] && css['height']) {
     const parentContentWidth = getContentWidth(parent)
     const nodeWidth = node.absoluteBoundingBox?.width
     if (parentContentWidth && nodeWidth && Math.abs(nodeWidth - parentContentWidth) <= 1) {
       delete css['width']
-      // 同步到 parsedStyles
-      if (componentNode.parsedStyles) delete componentNode.parsedStyles.width
-      // 高度也只在明确固定尺寸时保留（非文字/非自适应节点）
+      autoWidth = true
       if (node.type !== 'TEXT') {
         delete css['height']
-        if (componentNode.parsedStyles) delete componentNode.parsedStyles.height
       }
     }
   }
 
   const styleResult = styleConverter.convert(css, node.id)
 
+  const parsed = extractParsedStyles(node, parent, variableMap)
+  // 同步宽度自适应到 parsedStyles
+  if (autoWidth) {
+    delete parsed.width
+    if (node.type !== 'TEXT') delete parsed.height
+  }
+
   const componentNode: ComponentNode = {
     tag: getTagForNode(node),
     nodeId: node.id,
     props: {},
     ...(node.componentId ? { componentId: node.componentId } : {}),
-    parsedStyles: extractParsedStyles(node, parent, variableMap)
+    parsedStyles: parsed
   }
 
   if (styleResult.className) {
