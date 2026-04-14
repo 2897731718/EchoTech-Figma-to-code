@@ -123,7 +123,7 @@ export class FigmaAPIClient {
   }
 
   async getVariables(fileKey: string): Promise<VariablesResponse> {
-    return this.request<VariablesResponse>(`/files/${fileKey}/variables`)
+    return this.request<VariablesResponse>(`/files/${fileKey}/variables/local`)
   }
 
   async getMe(): Promise<MeResponse> {

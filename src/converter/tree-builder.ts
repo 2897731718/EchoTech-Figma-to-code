@@ -120,7 +120,12 @@ export function buildComponentTree(
     nodeId: node.id,
     props: {},
     ...(node.componentId ? { componentId: node.componentId } : {}),
-    parsedStyles: parsed
+    parsedStyles: parsed,
+    ...(node.componentProperties ? { componentProps: extractComponentProps(node.componentProperties) } : {}),
+    // 语义名：INSTANCE/COMPONENT 节点保留 Figma 节点名
+    ...((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.name ? { semanticName: node.name } : {}),
+    // flex-1：layoutGrow=1 时标记
+    ...(node.layoutGrow === 1 ? { isExpanded: true } : {})
   }
 
   if (styleResult.className) {
@@ -207,8 +212,8 @@ export function extractParsedStyles(
     result.padding = { top: pt, right: pr, bottom: pb, left: pl }
   }
 
-  // 尺寸
-  if (node.absoluteBoundingBox) {
+  // 尺寸（layoutGrow=1 时不设固定宽度）
+  if (node.layoutGrow !== 1 && node.absoluteBoundingBox) {
     result.width = node.absoluteBoundingBox.width
     result.height = node.absoluteBoundingBox.height
   }
@@ -330,6 +335,30 @@ function getTagForNode(node: Node, componentClassNameMap?: Map<string, string>):
     default:
       return 'div'
   }
+}
+
+/** 从 INSTANCE 的 componentProperties 中提取有意义的属性（变体、文字、开关） */
+function extractComponentProps(
+  properties: Record<string, { type: string; value: string | boolean }>
+): Record<string, { type: string; value: string | boolean }> {
+  const result: Record<string, { type: string; value: string | boolean }> = {}
+
+  for (const [rawKey, prop] of Object.entries(properties)) {
+    // 清理 key 名：去掉 Figma 的 hash 后缀（如 "Text#81524:0" → "Text"）
+    const cleanKey = rawKey.replace(/#\d+:\d+$/, '').trim()
+
+    // 只保留有意义的属性
+    if (prop.type === 'VARIANT') {
+      result[cleanKey] = { type: 'VARIANT', value: prop.value }
+    } else if (prop.type === 'TEXT' && typeof prop.value === 'string' && prop.value.length > 0) {
+      result[cleanKey] = { type: 'TEXT', value: prop.value }
+    } else if (prop.type === 'BOOLEAN' && prop.value === true) {
+      // 只记录开启的开关
+      result[cleanKey] = { type: 'BOOLEAN', value: true }
+    }
+  }
+
+  return result
 }
 
 /** 将 Figma 节点名称转为 PascalCase 组件标签，例如 "icon/arrow-right" → "IconArrowRight" */

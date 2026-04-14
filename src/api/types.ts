@@ -49,6 +49,7 @@ export interface Node {
   pluginData?: unknown
   sharedPluginData?: unknown
   componentId?: string
+  componentProperties?: Record<string, ComponentProperty>
   componentPropertyReferences?: Record<string, string>
   boundVariables?: Record<string, VariableAlias>
   explicitVariableModes?: Record<string, string>
@@ -72,6 +73,7 @@ export interface Node {
   paddingTop?: number
   paddingBottom?: number
   itemSpacing?: number
+  layoutGrow?: number
   layoutPositioning?: 'AUTO' | 'ABSOLUTE'
   constraints?: Constraints
   effects?: Effect[]
@@ -174,6 +176,13 @@ export interface TypeStyle {
   lineHeightPercent?: number
   lineHeightPercentFontSize?: number
   lineHeightUnit?: 'PIXELS' | 'FONT_SIZE_%' | 'INTRINSIC_%'
+}
+
+export interface ComponentProperty {
+  type: 'BOOLEAN' | 'TEXT' | 'INSTANCE_SWAP' | 'VARIANT'
+  value: string | boolean
+  boundVariables?: Record<string, unknown>
+  preferredValues?: Array<{ type: string; key: string }>
 }
 
 export interface Component {

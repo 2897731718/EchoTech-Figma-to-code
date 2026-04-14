@@ -196,7 +196,10 @@ export function convertNodeToCSS(
     Object.assign(css, constraintStyles)
   }
 
-  if (node.absoluteBoundingBox) {
+  // layoutGrow=1 时不设固定宽度，改为 flex: 1
+  if (node.layoutGrow === 1) {
+    css.flex = '1'
+  } else if (node.absoluteBoundingBox) {
     css.width = `${node.absoluteBoundingBox.width}px`
     css.height = `${node.absoluteBoundingBox.height}px`
   }
@@ -289,22 +292,44 @@ export async function convertFigmaToCode(
         variableMap.set(id, cssVarName)
       }
     }
-  } catch {
+  } catch (e) {
     // Variables API 不可用（非 Enterprise 或权限不足），正常降级
+    console.error(`[figma-to-code] Variables API 不可用，颜色将使用原始色值（${(e as Error).message?.slice(0, 60)}）`)
   }
 
-  // 提取 i18n 变量映射（由 Figma 插件写入 sharedPluginData）
+  // 提取插件导出的变量映射（sharedPluginData）
+  const pluginData = (fileData.document as Record<string, unknown>).sharedPluginData as Record<string, Record<string, string>> | undefined
+
+  // i18n 变量映射（TEXT.characters → i18n key）
   let i18nMap: Map<string, string> | undefined
   try {
-    const pluginData = (fileData.document as Record<string, unknown>).sharedPluginData as Record<string, Record<string, string>> | undefined
-    const variableMapJson = pluginData?.i18n_variable_exporter?.variableMap
-    if (variableMapJson) {
-      const parsed = JSON.parse(variableMapJson) as Record<string, string>
+    const i18nJson = pluginData?.i18n_variable_exporter?.variableMap
+    if (i18nJson) {
+      const parsed = JSON.parse(i18nJson) as Record<string, string>
       i18nMap = new Map(Object.entries(parsed))
       console.error(`[figma-to-code] i18n 变量映射: ${i18nMap.size} 个`)
     }
   } catch {
     // 无 i18n 插件数据，正常降级
+  }
+
+  // 通用变量映射（颜色/间距/圆角等 Design Token，由 variable_exporter 插件导出）
+  // 合并到 variableMap，与 Variables API 互补
+  try {
+    const varJson = pluginData?.variable_exporter?.variableMap
+    if (varJson) {
+      const parsed = JSON.parse(varJson) as Record<string, string>
+      if (!variableMap) variableMap = new Map()
+      for (const [id, name] of Object.entries(parsed)) {
+        if (!variableMap.has(id)) {
+          const cssVarName = `--${name.replace(/\//g, '-').replace(/\s+/g, '-').toLowerCase()}`
+          variableMap.set(id, cssVarName)
+        }
+      }
+      console.error(`[figma-to-code] 插件变量映射: ${parsed ? Object.keys(parsed).length : 0} 个`)
+    }
+  } catch {
+    // 无 variable_exporter 插件数据，正常降级
   }
 
   // 组件映射：通过 annotation_config 将 componentKey → Flutter 类名
