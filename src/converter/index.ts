@@ -321,8 +321,10 @@ export async function convertFigmaToCode(
     }
   }
 
-  // 预处理：折叠透传容器 + INSTANCE 剪枝（根节点不剪枝）
-  const simplifiedNode = simplifyNode(targetNode, true)
+  // 预处理：折叠透传容器 + INSTANCE 条件剪枝
+  // 有组件映射的 INSTANCE 折叠，无映射的保留内部结构
+  const mappedComponentIds = componentClassNameMap ? new Set(componentClassNameMap.keys()) : undefined
+  const simplifiedNode = simplifyNode(targetNode, true, mappedComponentIds)
   const nodeMapForStyles = buildNodeMap([simplifiedNode])
 
   const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap, i18nMap, componentClassNameMap)

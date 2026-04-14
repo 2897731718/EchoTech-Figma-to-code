@@ -34,18 +34,28 @@ function isPassthrough(node: Node): boolean {
 /**
  * 简化 Figma 节点树：
  * - 折叠透传容器（单子节点且无视觉样式）
- * - 对 INSTANCE 节点清空 children（不展开内部实现）
+ * - 对 INSTANCE 节点：有组件映射时折叠，无映射时保留内部结构
  */
-export function simplifyNode(node: Node, isRoot = false): Node {
-  // 策略一：INSTANCE / 嵌套 COMPONENT 不展开子节点（根节点除外）
+export function simplifyNode(
+  node: Node,
+  isRoot = false,
+  mappedComponentIds?: Set<string>
+): Node {
+  // 策略一：INSTANCE / 嵌套 COMPONENT 节点处理（根节点除外）
   if (!isRoot && (node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
-    return { ...node, children: [] }
+    // 有组件映射 → 折叠（AI 知道用什么组件，不需要看内部）
+    // 无映射 → 保留内部结构（AI 需要看内部来推断）
+    const isMapped = node.componentId && mappedComponentIds?.has(node.componentId)
+    if (isMapped) {
+      return { ...node, children: [] }
+    }
+    // 无映射时继续递归简化子节点，不折叠
   }
 
   // 先递归简化 children
   const simplifiedChildren = (node.children ?? [])
     .filter(c => c.visible !== false)
-    .map(c => simplifyNode(c))
+    .map(c => simplifyNode(c, false, mappedComponentIds))
 
   const nodeWithChildren = { ...node, children: simplifiedChildren }
 
