@@ -38,6 +38,12 @@ export class ReactGenerator implements CodeGenerator {
     }
 
     if (!node.children || node.children.length === 0) {
+      // 矢量图标容器 → 输出 Icon 组件
+      if (node.isVectorIcon && node.iconName) {
+        const size = node.parsedStyles?.width ?? node.parsedStyles?.height
+        const sizeAttr = size ? ` size={${size}}` : ''
+        return `${indent}<Icon name="${node.iconName}"${sizeAttr} />`
+      }
       return `${indent}<${node.tag}${attrsStr} />`
     }
 

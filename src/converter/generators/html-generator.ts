@@ -35,6 +35,11 @@ export class HTMLGenerator implements CodeGenerator {
     }
 
     if (!node.children || node.children.length === 0) {
+      // 矢量图标容器 → 输出图标占位
+      if (node.isVectorIcon && node.iconName) {
+        const size = node.parsedStyles?.width ?? node.parsedStyles?.height ?? 16
+        return `${indent}<span class="icon icon-${node.iconName}" style="font-size: ${size}px"></span>`
+      }
       return `${indent}<${node.tag}${attrsStr}></${node.tag}>`
     }
 

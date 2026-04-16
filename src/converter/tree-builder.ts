@@ -6,6 +6,168 @@ import { convertPaintToColor, type VariableMap } from './colors'
 import { convertFillsToBackgroundColor } from './styles'
 import type { FrameNode } from './layout'
 
+// ─── INSTANCE 智能折叠：基础组件检测 ─────────────────────────────────────────
+
+/** 提取字符串开头的 emoji（trim 后匹配，容忍设计师输入前导空格） */
+function extractLeadingEmoji(name: string): string | null {
+  const match = name.trim().match(/^(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u)
+  return match ? match[1] : null
+}
+
+/**
+ * 自动检测基础组件的 emoji 前缀：
+ * 扫描所有 INSTANCE 的 name，找出占比 > 40% 的高频 emoji 前缀
+ */
+export function detectBaseComponentPrefixes(root: Node): string[] {
+  const namesByComponent = new Map<string, string>()
+
+  function walk(node: Node) {
+    if ((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.componentId && node.name) {
+      if (!namesByComponent.has(node.componentId)) {
+        namesByComponent.set(node.componentId, node.name)
+      }
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        walk(child)
+      }
+    }
+  }
+  walk(root)
+
+  if (namesByComponent.size === 0) return []
+
+  // 统计 emoji 前缀频率
+  const emojiCount = new Map<string, number>()
+  for (const name of namesByComponent.values()) {
+    const emoji = extractLeadingEmoji(name)
+    if (emoji) {
+      emojiCount.set(emoji, (emojiCount.get(emoji) ?? 0) + 1)
+    }
+  }
+
+  // 占比超过 40% 的 emoji 认定为基础组件前缀
+  const threshold = namesByComponent.size * 0.4
+  const prefixes: string[] = []
+  for (const [emoji, count] of emojiCount) {
+    if (count >= threshold) {
+      prefixes.push(emoji)
+    }
+  }
+
+  if (prefixes.length > 0) {
+    console.error(`[figma-to-code] 自动检测基础组件前缀: ${prefixes.map(p => `"${p}"`).join(', ')}（${namesByComponent.size} 个组件）`)
+  }
+
+  return prefixes
+}
+
+/** 判断 INSTANCE 节点的 children 中是否嵌套了其他 INSTANCE（穿透 FRAME/GROUP） */
+function hasNestedInstance(node: Node): boolean {
+  for (const child of (node.children ?? [])) {
+    if (child.visible === false) continue
+    if (child.type === 'INSTANCE' || child.type === 'COMPONENT') return true
+    if ((child.type === 'FRAME' || child.type === 'GROUP') && hasNestedInstance(child)) return true
+  }
+  return false
+}
+
+/** INSTANCE 折叠配置 */
+export interface InstanceFoldingOptions {
+  /** 手动指定基础组件前缀（优先级最高） */
+  baseComponentPrefixes?: string[]
+  /** 自动检测出的 emoji 前缀（由 detectBaseComponentPrefixes 生成） */
+  detectedPrefixes?: string[]
+}
+
+/**
+ * 判断 INSTANCE 是否应该折叠（剥离 children）：
+ * 优先级：配置前缀 > 自动检测前缀 > 树结构兜底（叶子 INSTANCE）
+ */
+function shouldFoldInstance(node: Node, options?: InstanceFoldingOptions): boolean {
+  const name = node.name?.trim() ?? ''
+
+  // 1. 配置的前缀优先
+  if (options?.baseComponentPrefixes?.length) {
+    return options.baseComponentPrefixes.some(p => name.startsWith(p))
+  }
+
+  // 2. 自动检测的 emoji 前缀
+  if (options?.detectedPrefixes?.length) {
+    return options.detectedPrefixes.some(p => name.startsWith(p))
+  }
+
+  // 3. 兜底：叶子 INSTANCE（children 里没有嵌套 INSTANCE）→ 折叠
+  return !hasNestedInstance(node)
+}
+
+// ─── 矢量形状类型集合（图标路径、布尔运算、基础形状） ─────────────────────────
+const VECTOR_SHAPE_TYPES = new Set([
+  'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON'
+])
+
+/**
+ * 判断节点是否为矢量图标容器：
+ * 所有可见子节点均为矢量形状（VECTOR/BOOLEAN_OPERATION/STAR 等）
+ */
+function isVectorIconContainer(node: Node): boolean {
+  const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
+  if (visibleChildren.length === 0) return false
+  return visibleChildren.every(c => VECTOR_SHAPE_TYPES.has(c.type))
+}
+
+/**
+ * 从节点名提取图标名，转为 kebab-case
+ * 例如：
+ *   "IconArrowRight" → "arrow-right"
+ *   "icon/arrow-right" → "arrow-right"
+ *   "Arrow Right" → "arrow-right"
+ *   "💙 Icon/Close" → "close"
+ */
+export function extractIconName(nodeName: string): string {
+  let name = nodeName
+    // 移除 emoji 前缀
+    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+/u, '')
+    // 移除常见前缀
+    .replace(/^(icon[_\-/\s]*)/i, '')
+    // 移除路径分隔符前的内容（取最后一段）
+    .split(/[/\\]/).pop() || ''
+
+  // PascalCase/camelCase → kebab-case
+  name = name
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
+    // 空格、下划线 → 短横线
+    .replace(/[\s_]+/g, '-')
+    // 清理多余短横线
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return name || 'icon'
+}
+
+/**
+ * 判断节点是否为横滑容器：
+ * 横向 flex 布局 + 子元素总宽超过容器宽
+ */
+function isScrollContainer(node: Node): boolean {
+  if (node.layoutMode !== 'HORIZONTAL' || !node.absoluteBoundingBox) return false
+
+  const parentWidth = node.absoluteBoundingBox.width
+  const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
+  if (visibleChildren.length < 3 || parentWidth < 200) return false
+
+  const gap = node.itemSpacing ?? 0
+  let totalChildWidth = 0
+  for (const child of visibleChildren) {
+    if (child.absoluteBoundingBox) totalChildWidth += child.absoluteBoundingBox.width
+  }
+  totalChildWidth += (visibleChildren.length - 1) * gap
+
+  return totalChildWidth > parentWidth
+}
+
 // ─── 策略二：预处理 - 折叠透传容器 ────────────────────────────────────────────
 
 /**
@@ -33,29 +195,35 @@ function isPassthrough(node: Node): boolean {
 
 /**
  * 简化 Figma 节点树：
+ * - 折叠基础组件 INSTANCE（配置前缀 > 自动检测 emoji > 叶子 INSTANCE 兜底）
+ * - 折叠矢量图标容器（children 全是 VECTOR）
  * - 折叠透传容器（单子节点且无视觉样式）
- * - 对 INSTANCE 节点：有组件映射时折叠，无映射时保留内部结构
  */
 export function simplifyNode(
   node: Node,
   isRoot = false,
-  mappedComponentIds?: Set<string>
+  mappedComponentIds?: Set<string>,
+  foldingOptions?: InstanceFoldingOptions
 ): Node {
   // 策略一：INSTANCE / 嵌套 COMPONENT 节点处理（根节点除外）
   if (!isRoot && (node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
-    // 有组件映射 → 折叠（AI 知道用什么组件，不需要看内部）
-    // 无映射 → 保留内部结构（AI 需要看内部来推断）
+    // annotation_config 精确映射优先
     const isMapped = node.componentId && mappedComponentIds?.has(node.componentId)
-    if (isMapped) {
+    if (isMapped || shouldFoldInstance(node, foldingOptions)) {
       return { ...node, children: [] }
     }
-    // 无映射时继续递归简化子节点，不折叠
+    // 业务/组合组件：继续递归简化子节点，不折叠
+  }
+
+  // 策略 1.5：矢量图标容器折叠（children 全是 VECTOR 等形状 → 视为图标，剥离子节点）
+  if (!isRoot && isVectorIconContainer(node)) {
+    return { ...node, children: [], _vectorIcon: true } as Node
   }
 
   // 先递归简化 children
   const simplifiedChildren = (node.children ?? [])
     .filter(c => c.visible !== false)
-    .map(c => simplifyNode(c, false, mappedComponentIds))
+    .map(c => simplifyNode(c, false, mappedComponentIds, foldingOptions))
 
   const nodeWithChildren = { ...node, children: simplifiedChildren }
 
@@ -115,6 +283,10 @@ export function buildComponentTree(
     if (node.type !== 'TEXT') delete parsed.height
   }
 
+  const isVectorIcon = (node as Node & { _vectorIcon?: boolean })._vectorIcon === true
+  const iconName = isVectorIcon && node.name ? extractIconName(node.name) : undefined
+  const scrollContainer = isScrollContainer(node)
+
   const componentNode: ComponentNode = {
     tag: getTagForNode(node, componentClassNameMap),
     nodeId: node.id,
@@ -125,7 +297,11 @@ export function buildComponentTree(
     // 语义名：INSTANCE/COMPONENT 节点保留 Figma 节点名
     ...((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.name ? { semanticName: node.name } : {}),
     // flex-1：layoutGrow=1 时标记
-    ...(node.layoutGrow === 1 ? { isExpanded: true } : {})
+    ...(node.layoutGrow === 1 ? { isExpanded: true } : {}),
+    // 矢量图标容器标记 + 图标名
+    ...(isVectorIcon ? { isVectorIcon: true, iconName } : {}),
+    // 横滑容器标记
+    ...(scrollContainer ? { isScrollContainer: true } : {})
   }
 
   if (styleResult.className) {

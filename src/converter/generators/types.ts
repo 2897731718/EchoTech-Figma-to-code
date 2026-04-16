@@ -25,6 +25,12 @@ export interface ComponentNode {
   semanticName?: string
   /** 是否 flex-1（layoutGrow=1，对应 Flutter Expanded） */
   isExpanded?: boolean
+  /** 矢量图标容器（children 全为 VECTOR，已折叠） */
+  isVectorIcon?: boolean
+  /** 图标名（从节点名提取，kebab-case） */
+  iconName?: string
+  /** 横滑容器（子元素总宽超过容器宽） */
+  isScrollContainer?: boolean
 }
 
 export interface StyleConverter {

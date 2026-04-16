@@ -64,20 +64,66 @@ src/
 
 Figma 的原始节点结构包含大量对代码无意义的噪音，转换前需要做简化处理。
 
-### 策略一：INSTANCE 节点不展开子节点
+### 策略一：INSTANCE 智能折叠
 
-INSTANCE 是组件实例，内部实现是设计细节，不应出现在骨架里。
+INSTANCE 是组件实例，基础组件的内部实现是设计细节，不应出现在骨架里。但复合型业务组件（如 Card 内嵌 Button）需要保留结构。
+
+**折叠优先级：**
+1. **annotation_config 映射**：有精确组件映射的 INSTANCE 必定折叠
+2. **配置前缀**：`baseComponentPrefixes` 参数指定的前缀（如 `["💙"]`）
+3. **自动检测 emoji**：扫描文档，占比 >40% 的 emoji 前缀自动识别为基础组件
+4. **叶子 INSTANCE 兜底**：children 中没有嵌套 INSTANCE 的节点折叠
 
 ```
 原始：
-<IconArrowHeavyRight>
-  <div class="bg-[#918b9f] w-[10px] h-[10px]" />  ← 噪音
+<💙 Button>
+  <div class="bg-primary ...">
+    <span>提交</span>
+  </div>
+</💙 Button>
 
 去噪后：
-<IconArrowHeavyRight class="w-[12px] h-[12px]" />
+<💙 Button class="w-[120px] h-[40px]" />  <!-- figma-node: xxx -->
 ```
 
-实现位置：`simplifyNode()` 预处理阶段，遇到 INSTANCE 直接清空 children。
+实现位置：`simplifyNode()` + `shouldFoldInstance()` + `detectBaseComponentPrefixes()`
+
+### 策略 1.5：矢量图标容器折叠
+
+当一个容器的所有可见子节点都是矢量形状（VECTOR/BOOLEAN_OPERATION/STAR/LINE/ELLIPSE）时，识别为图标容器，折叠子节点并生成 `<Icon>`。
+
+```
+原始：
+<IconClose class="w-[16px] h-[16px]">
+  <vector class="..." />
+  <vector class="..." />
+</IconClose>
+
+去噪后：
+<Icon name="close" :size="16" />
+```
+
+图标名从节点名提取，规则：
+- 移除 emoji 前缀和 `icon`/`Icon` 前缀
+- PascalCase/camelCase → kebab-case
+- 例：`IconArrowRight` → `arrow-right`，`💙 Icon/Close` → `close`
+
+实现位置：`isVectorIconContainer()` + `extractIconName()`
+
+### 策略 1.6：横滑容器检测
+
+横向 flex 布局 + 子元素总宽超过容器宽 → 标记为横滑容器。
+
+```html
+<!-- 输出注释提示 -->
+<!-- 横滑容器：小程序用 <scroll-view scroll-x>，H5 用 overflow-x-auto -->
+<div class="flex gap-12 overflow-x-auto">
+  <div class="w-120 shrink-0">...</div>
+  <div class="w-120 shrink-0">...</div>
+</div>
+```
+
+实现位置：`isScrollContainer()` + Vue generator 注释输出
 
 ### 策略二：透传容器折叠
 

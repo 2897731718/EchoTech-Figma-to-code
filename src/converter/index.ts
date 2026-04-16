@@ -9,10 +9,11 @@ import {
   convertStrokesToBorder
 } from './styles'
 import { convertPaintToColor, type VariableMap } from './colors'
-import type { Framework, StyleFormat } from './generators/types'
+import type { Framework, StyleFormat, ComponentNode } from './generators/types'
 import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
-import { buildComponentTree, simplifyNode, parseI18nKey } from './tree-builder'
+import { buildComponentTree, simplifyNode, parseI18nKey, detectBaseComponentPrefixes } from './tree-builder'
+import type { InstanceFoldingOptions } from './tree-builder'
 import { loadAnnotationMap, buildComponentClassNameMap } from './annotation'
 
 export interface ConvertOptions {
@@ -21,6 +22,8 @@ export interface ConvertOptions {
   client?: FigmaAPIClient
   framework?: Framework
   styleFormat?: StyleFormat
+  /** 手动指定基础组件前缀（如 ["💙"]），匹配的 INSTANCE 会折叠。不传则自动检测 */
+  baseComponentPrefixes?: string[]
 }
 
 export interface InstanceComponent {
@@ -183,6 +186,23 @@ export function convertNodeToCSS(
   if (node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE') {
     const layoutStyles = convertAutoLayout(node as FrameNode)
     Object.assign(css, layoutStyles)
+
+    // 横向溢出检测：子元素总宽超过容器宽 → 标记 overflow-x: auto（横滑容器）
+    if (node.layoutMode === 'HORIZONTAL' && node.absoluteBoundingBox) {
+      const parentWidth = node.absoluteBoundingBox.width
+      const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
+      if (visibleChildren.length >= 3 && parentWidth >= 200) {
+        const gap = (node as FrameNode).itemSpacing ?? 0
+        let totalChildWidth = 0
+        for (const child of visibleChildren) {
+          if (child.absoluteBoundingBox) totalChildWidth += child.absoluteBoundingBox.width
+        }
+        totalChildWidth += (visibleChildren.length - 1) * gap
+        if (totalChildWidth > parentWidth) {
+          css['overflow-x'] = 'auto'
+        }
+      }
+    }
   }
 
   // auto-layout 流中的子节点不设置 position: absolute，除非明确标记为 ABSOLUTE
@@ -346,10 +366,18 @@ export async function convertFigmaToCode(
     }
   }
 
-  // 预处理：折叠透传容器 + INSTANCE 条件剪枝
-  // 有组件映射的 INSTANCE 折叠，无映射的保留内部结构
+  // 预处理：折叠透传容器 + INSTANCE 智能折叠
   const mappedComponentIds = componentClassNameMap ? new Set(componentClassNameMap.keys()) : undefined
-  const simplifiedNode = simplifyNode(targetNode, true, mappedComponentIds)
+
+  // INSTANCE 折叠策略：配置前缀 > 自动检测 emoji > 叶子 INSTANCE 兜底
+  const foldingOptions: InstanceFoldingOptions = {}
+  if (options.baseComponentPrefixes?.length) {
+    foldingOptions.baseComponentPrefixes = options.baseComponentPrefixes
+  } else {
+    foldingOptions.detectedPrefixes = detectBaseComponentPrefixes(fileData.document)
+  }
+
+  const simplifiedNode = simplifyNode(targetNode, true, mappedComponentIds, foldingOptions)
   const nodeMapForStyles = buildNodeMap([simplifiedNode])
 
   const componentTree = buildComponentTree(simplifiedNode, styleConverter, undefined, nodeMapForStyles, variableMap, i18nMap, componentClassNameMap)

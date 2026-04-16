@@ -20,7 +20,9 @@ import { convertFigmaToCode, FigmaAPIClient, readFigmaPAT } from '../src/index'
 // const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5% 9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=3-15932&m=dev'
 
 // 售后详情
-const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5%9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=2853-115681&m=dev'
+// const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5%9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=2853-115681&m=dev'
+
+const FIGMA_URL = 'https://www.figma.com/design/uXywt7Ca6AR4dNm7f3zR7d/02_%E4%B8%9A%E5%8A%A1%E7%BB%84%E4%BB%B6-%F0%9F%91%BB_%E7%A4%BE%E5%8C%BA?node-id=14202-599742&m=dev'
 
 /**
  * 解析 Figma URL 中的 fileKey 和 nodeId

@@ -43,14 +43,25 @@ export class VueGenerator implements CodeGenerator {
     }
 
     if (!node.children || node.children.length === 0) {
-      // INSTANCE 节点：自闭合并附加 figma-node 注释供后续递归识别
-      const figmaComment = node.componentId
-        ? ` <!-- figma-node: ${node.componentId} -->`
-        : ''
-      return `${indent}<${node.tag}${attrsStr} />${figmaComment}`
+      // 矢量图标容器 → 直接生成 Icon
+      if (node.isVectorIcon && node.iconName) {
+        const size = node.parsedStyles?.width ?? node.parsedStyles?.height
+        const sizeAttr = size ? ` :size="${size}"` : ''
+        return `${indent}<Icon name="${node.iconName}"${sizeAttr} />`
+      }
+
+      const comments: string[] = []
+      if (node.componentId) comments.push(`figma-node: ${node.componentId}`)
+      const commentStr = comments.length > 0 ? ` <!-- ${comments.join(' | ')} -->` : ''
+      return `${indent}<${node.tag}${attrsStr} />${commentStr}`
     }
 
-    let code = `${indent}<${node.tag}${attrsStr}>\n`
+    // 横滑容器注释
+    const scrollComment = node.isScrollContainer
+      ? `${indent}<!-- 横滑容器：小程序用 <scroll-view scroll-x>，H5 用 overflow-x-auto -->\n`
+      : ''
+
+    let code = `${scrollComment}${indent}<${node.tag}${attrsStr}>\n`
     for (const child of node.children) {
       code += `${this.generateTemplate(child, depth + 1)}\n`
     }
