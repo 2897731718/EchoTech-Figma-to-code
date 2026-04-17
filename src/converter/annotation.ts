@@ -58,18 +58,32 @@ export async function loadAnnotationMap(
 }
 
 /**
- * 从 FileResponse.components 构建 componentId → componentKey 映射，
- * 再结合 annotationMap (componentKey → className)，
- * 最终得到 componentId → className 映射。
+ * 从 FileResponse.components 构建 componentId → className 映射。
+ *
+ * 匹配策略：
+ * 1. 用 Component 自身的 key 匹配 annotationMap
+ * 2. 如果是变体（有 componentSetId），用 ComponentSet 的 key 匹配
+ *    （annotation_config 标注时取的是 ComponentSet 的 key）
  */
 export function buildComponentClassNameMap(
-  fileComponents: Record<string, { key: string; name: string }>,
-  annotationMap: Map<string, string>
+  fileComponents: Record<string, { key: string; name: string; componentSetId?: string }>,
+  annotationMap: Map<string, string>,
+  fileComponentSets?: Record<string, { key: string; name: string }>
 ): Map<string, string> {
   const map = new Map<string, string>()
 
   for (const [componentId, component] of Object.entries(fileComponents)) {
-    const className = annotationMap.get(component.key)
+    // 1. 先用 Component 自身的 key 匹配
+    let className = annotationMap.get(component.key)
+
+    // 2. 如果没匹配到且是变体，用 ComponentSet 的 key 匹配
+    if (!className && component.componentSetId && fileComponentSets) {
+      const componentSet = fileComponentSets[component.componentSetId]
+      if (componentSet) {
+        className = annotationMap.get(componentSet.key)
+      }
+    }
+
     if (className) {
       map.set(componentId, className)
     }

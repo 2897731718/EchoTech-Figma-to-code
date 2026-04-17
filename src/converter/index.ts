@@ -358,7 +358,7 @@ export async function convertFigmaToCode(
     try {
       const annotationMap = await loadAnnotationMap('flutter')
       if (annotationMap.size > 0) {
-        componentClassNameMap = buildComponentClassNameMap(fileData.components ?? {}, annotationMap)
+        componentClassNameMap = buildComponentClassNameMap(fileData.components ?? {}, annotationMap, fileData.componentSets ?? {})
         console.error(`[figma-to-code] 组件类名映射: ${componentClassNameMap.size} 个`)
       }
     } catch {
