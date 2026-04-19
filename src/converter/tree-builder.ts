@@ -117,15 +117,38 @@ function isVectorIconContainer(node: Node): boolean {
 }
 
 /**
+ * 检测图标名是否有效（kebab-case 且不含中文等异常字符）
+ */
+function isValidIconName(name: string): boolean {
+  // 包含中文 → 无效
+  if (/[\u4e00-\u9fa5]/.test(name)) return false
+  // 包含日文假名 → 无效
+  if (/[\u3040-\u30ff]/.test(name)) return false
+  // 常见占位符词汇 → 无效
+  const placeholderWords = ['title', 'icon', 'placeholder', 'image', 'img', 'bg', 'background']
+  if (placeholderWords.includes(name.toLowerCase())) return false
+  // 太短且无连字符（如 bg、abc）→ 可能是占位符，标记为待确认
+  if (name.length <= 3 && !name.includes('-')) return false
+  // 正常 kebab-case
+  return true
+}
+
+/** 收集需要手动修改的图标名（用于 CLI 汇总输出） */
+export const todoIconNames: string[] = []
+
+/**
  * 从节点名提取图标名，转为 kebab-case
  * 例如：
  *   "IconArrowRight" → "arrow-right"
  *   "icon/arrow-right" → "arrow-right"
  *   "Arrow Right" → "arrow-right"
  *   "💙 Icon/Close" → "close"
+ *   "后续可编辑" → "icon-todo--后续可编辑"（异常图标名，添加前缀标记）
  */
 export function extractIconName(nodeName: string): string {
-  let name = nodeName
+  const originalName = nodeName.trim()
+
+  let name = originalName
     // 移除 emoji 前缀
     .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+/u, '')
     // 移除常见前缀
@@ -144,7 +167,16 @@ export function extractIconName(nodeName: string): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
 
-  return name || 'icon'
+  if (!name) return 'icon'
+
+  // 检测图标名是否有效，无效则添加 icon-todo-- 前缀
+  if (!isValidIconName(name)) {
+    const todoName = `icon-todo--${name}`
+    todoIconNames.push(name)
+    return todoName
+  }
+
+  return name
 }
 
 /**

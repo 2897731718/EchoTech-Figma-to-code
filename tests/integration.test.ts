@@ -8,9 +8,23 @@
  *   FIGMA_URL="https://www.figma.com/design/xxx/..." pnpm test:run tests/integration.test.ts
  */
 
+import { readFileSync, existsSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { convertFigmaToCode, FigmaAPIClient, readFigmaPAT } from '../src/index'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+function loadTokenMap(product: string = 'product-a'): Map<string, string> | undefined {
+  const tokenFilePath = resolve(__dirname, `../tokens/${product}.json`)
+  if (existsSync(tokenFilePath)) {
+    const tokenData = JSON.parse(readFileSync(tokenFilePath, 'utf-8')) as Record<string, string>
+    return new Map(Object.entries(tokenData))
+  }
+  return undefined
+}
 
 // 从环境变量或直接修改此处粘贴链接
 // 表单填写
@@ -22,7 +36,13 @@ import { convertFigmaToCode, FigmaAPIClient, readFigmaPAT } from '../src/index'
 // 售后详情
 // const FIGMA_URL = 'https://www.figma.com/design/XP6Z8QP71DLOIe1xggGchR/40_%E4%BA%A4%E6%98%93%E5%90%8E-%E2%9D%A4%EF%B8%8F_%E8%AE%A2%E5%8D%95---%E5%94%AE%E5%90%8E%E5%8D%95---%E9%92%B1%E5%8C%85---%E5%BC%82%E5%B8%B8%E9%80%80%E5%9B%9E%EF%BC%882025-08-~-%E8%87%B3%E4%BB%8A%EF%BC%89?node-id=2853-115681&m=dev'
 
-const FIGMA_URL = 'https://www.figma.com/design/uXywt7Ca6AR4dNm7f3zR7d/02_%E4%B8%9A%E5%8A%A1%E7%BB%84%E4%BB%B6-%F0%9F%91%BB_%E7%A4%BE%E5%8C%BA?node-id=14202-599742&m=dev'
+
+// 社区
+// const FIGMA_URL = 'https://www.figma.com/design/uXywt7Ca6AR4dNm7f3zR7d/02_%E4%B8%9A%E5%8A%A1%E7%BB%84%E4%BB%B6-%F0%9F%91%BB_%E7%A4%BE%E5%8C%BA?node-id=14202-599741&m=dev'
+
+
+// 原子子组件
+const FIGMA_URL = 'https://www.figma.com/design/HjpmfUPwU7HGMRj9X80TAY/00_%E5%8E%9F%E5%AD%90%E5%88%86%E5%AD%90%E7%BB%84%E4%BB%B6-%F0%9F%92%99?node-id=79878-30242&m=dev'
 
 /**
  * 解析 Figma URL 中的 fileKey 和 nodeId
@@ -74,11 +94,15 @@ describe('Figma 真实链接集成测试', () => {3
     console.log('fileKey:', fileKey)
     console.log('nodeId:', nodeId ?? '（未指定，使用第一个页面）')
 
+    const preloadedTokenMap = loadTokenMap('product-a')
+    console.log('Token 映射数量:', preloadedTokenMap?.size ?? 0)
+
     const result = await convertFigmaToCode({
       fileKey,
       nodeId,
       framework: 'vue',
-      styleFormat: 'unocss'
+      styleFormat: 'unocss',
+      preloadedTokenMap
     })
 
     console.log('\n======== 生成的 HTML ========')

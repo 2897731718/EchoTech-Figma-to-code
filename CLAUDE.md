@@ -53,8 +53,9 @@ Figma REST API → raw node tree → simplifyNode() (denoise) → buildComponent
 - `src/converter/styles/` — style output modes (css-converter, unocss-converter, inline-converter)
 - `src/converter/generators/` — framework output (vue, html, react)
 - `src/pat/reader.ts` — PAT resolution: `.env.local` → macOS Keychain → env var
-- `figma-plugin/` — Figma plugin for exporting i18n Variable mappings to `sharedPluginData`
-- `bin/cli.ts` — CLI with `init` subcommand and skeleton generation
+- `bin/cli.ts` — CLI with `init` subcommand, style auto-detection, and token mapping
+- `tokens/` — Pre-generated token mappings (variableId → CSS variable name)
+- `scripts/generate-token-map.js` — Script to generate token mappings from Figma-exported tokens.json
 
 **Template system:** `template/` contains `figma-context.md` variants (generic, your-ui-lib) copied by `init` into target project's `.claude/`.
 

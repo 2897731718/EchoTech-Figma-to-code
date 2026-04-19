@@ -81,8 +81,13 @@ npx figma-to-code init --ui=your-ui-lib
 .claude/
 ├── commands/
 │   └── figma.md          # AI 调用的 skill（无需修改）
-└── figma-context.md      # 项目规范（可自行修改维护）
+├── figma-context.md      # 项目规范（可自行修改维护）
+└── project-tokens.md     # 项目 token 列表（自动扫描生成，用于翻译时匹配）
 ```
+
+`project-tokens.md` 通过扫描项目 CSS 中的 `:root` 变量自动生成，AI 翻译时会参考此文件：
+- 骨架中的 `var(--xxx, #fallback)` 如果 `--xxx` 在列表中 → 保留 token
+- 不在列表中 → 使用 fallback 值
 
 若已有对应文件，不会覆盖，需要重新初始化请先删除对应 figma-context.md
 
@@ -129,7 +134,7 @@ figma-to-code 可自动识别绑定了 Figma Variables 的 i18n 文本，输出 
 
 **1. 安装 Figma 插件（一次性）**
 
-在 Figma 桌面端：右键画布 → Plugins → Development → Import plugin from manifest... → 选择本项目的 `figma-plugin/manifest.json`。
+使用 [i18n Variable Exporter](https://www.figma.com/community/plugin/xxx) 插件（内部工具，需单独获取）。
 
 **2. 运行插件导出映射（每个文件跑一次）**
 
@@ -304,12 +309,39 @@ figma-to-code init --ui=your-ui-lib
 
 # 生成骨架（输出到 stdout）
 figma-to-code <figma-url>
-figma-to-code <figma-url> --framework=vue --style=unocss
+figma-to-code <figma-url> --framework=vue --style=unocss --tokens=product-a
 
 # 选项
---framework=vue|html|react   输出框架，默认 vue
---style=unocss|css|inline    样式格式，默认 unocss
+--framework=vue|html|react|flutter   输出框架，默认 vue
+--style=auto|unocss|css|inline       样式格式，默认 auto（自动检测项目技术栈）
+--tokens=product-a|product-b|product-c|product-d  产品 token 映射，默认 product-a
 ```
+
+### 样式模式自动检测
+
+`--style=auto`（默认）会根据项目配置自动选择：
+
+| 检测条件 | 使用模式 |
+|----------|----------|
+| 存在 `uno.config.ts/js` 或 `unocss` 依赖 | unocss |
+| 存在 `tailwind.config.js/ts` 或 `tailwindcss` 依赖 | unocss |
+| 存在 `windi.config.ts/js` 或 `windicss` 依赖 | unocss |
+| 微信小程序 / Taro / uni-app / React Native 项目 | inline |
+| 其他 | css |
+
+### Token 映射
+
+骨架中绑定了 Figma Variables 的颜色会输出为 `var(--token-name, #fallback)` 格式：
+
+```html
+<!-- 绑定了 Variable -->
+<div class="bg-[var(--bg-1,#ffffff)]">
+
+<!-- 未绑定 Variable -->
+<div class="bg-[#f5f5f5]">
+```
+
+Token 映射文件位于 `tokens/*.json`，由 `scripts/generate-token-map.js` 从 Figma 导出的 tokens.json 生成。
 
 ---
 
