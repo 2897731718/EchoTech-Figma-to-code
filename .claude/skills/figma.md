@@ -5,7 +5,7 @@
 ## 用法
 
 ```
-/figma <figma-url> [目标路径]
+/figma <figma-url> [目标路径] [--style=unocss|css|inline]
 ```
 
 ## 执行步骤
@@ -15,8 +15,10 @@
 用 Bash 运行（将 URL 替换为用户输入的链接）：
 
 ```bash
-figma-to-code <url> --framework=vue --style=unocss
+figma-to-code <url> --framework=vue
 ```
+
+> 默认自动检测项目技术栈选择样式模式。用户可用 `--style=xxx` 覆盖。
 
 **2. 读取项目规范**
 

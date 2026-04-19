@@ -12,7 +12,7 @@ import { convertPaintToColor, type VariableMap } from './colors'
 import type { Framework, StyleFormat, ComponentNode } from './generators/types'
 import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
-import { buildComponentTree, simplifyNode, parseI18nKey, detectBaseComponentPrefixes } from './tree-builder'
+import { buildComponentTree, simplifyNode, parseI18nKey, detectBaseComponentPrefixes, todoIconNames } from './tree-builder'
 import type { InstanceFoldingOptions } from './tree-builder'
 import { loadAnnotationMap, buildComponentClassNameMap } from './annotation'
 
@@ -24,6 +24,8 @@ export interface ConvertOptions {
   styleFormat?: StyleFormat
   /** 手动指定基础组件前缀（如 ["💙"]），匹配的 INSTANCE 会折叠。不传则自动检测 */
   baseComponentPrefixes?: string[]
+  /** 预加载的 token 映射（variableId → CSS 变量名），用于颜色输出 */
+  preloadedTokenMap?: Map<string, string>
 }
 
 export interface InstanceComponent {
@@ -352,6 +354,15 @@ export async function convertFigmaToCode(
     // 无 variable_exporter 插件数据，正常降级
   }
 
+  // 预加载的 token 映射（从 JSON 文件加载，优先级最高）
+  if (options.preloadedTokenMap && options.preloadedTokenMap.size > 0) {
+    if (!variableMap) variableMap = new Map()
+    for (const [id, cssVarName] of options.preloadedTokenMap) {
+      // 预加载映射覆盖其他来源
+      variableMap.set(id, cssVarName)
+    }
+  }
+
   // 组件映射：通过 annotation_config 将 componentKey → Flutter 类名
   let componentClassNameMap: Map<string, string> | undefined
   if (framework === 'flutter') {
@@ -427,6 +438,18 @@ export async function convertFigmaToCode(
   const instanceComponents = collectInstances(componentTree)
   const code = generator.generate(componentTree, styles)
   console.error(`[figma-to-code] 骨架生成完成，共 ${instanceComponents.length} 个子组件`)
+
+  // 输出需要手动修改的图标汇总
+  if (todoIconNames.length > 0) {
+    const uniqueIcons = [...new Set(todoIconNames)]
+    console.error(`\n[figma-to-code] ⚠️ 需手动修改的图标 (${uniqueIcons.length}个)：`)
+    uniqueIcons.forEach(name => {
+      console.error(`  - icon-todo--${name}`)
+    })
+    console.error('')
+    // 清空数组供下次调用
+    todoIconNames.length = 0
+  }
 
   return {
     code,

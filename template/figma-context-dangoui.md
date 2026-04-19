@@ -4,6 +4,21 @@
 
 ---
 
+## 核心翻译原则
+
+**骨架即真相，1:1 还原**：骨架输出什么，翻译结果就对应什么。禁止任何形式的"优化"、"简化"、"抽象"、"省略"。
+
+禁止行为：
+1. **禁止修改值**：骨架中的数值、尺寸、颜色等，直接使用，不得推算、合并、编公式
+2. **禁止省略元素**：骨架中的每个元素都必须翻译，不得因为"看起来是装饰"而跳过
+3. **禁止丢失属性**：元素上的 class、style、尺寸等属性，抽组件时必须透传为 props
+
+判断标准：翻译完成后，骨架中的每个节点、每个属性、每个数值，都能在翻译结果中找到对应。找不到 = 翻译错误。
+
+**不确定时问用户**，不要自己猜。
+
+---
+
 ## 组件库
 
 **包名**：`your-ui-lib`
@@ -88,22 +103,22 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 
 | Figma 节点名含 | 组件 | 用法 |
 |---|---|---|
-| `Icon` / `Arrow` / `Chevron` / `Close` / `Search` | `<Icon>` | `<Icon name="arrow-right" :size="16" />` |
+| `Icon` / `Arrow` / `Chevron` / `Close` / `Search` | `<Icon>` | `<Icon name="arrow-right" size="16px" />` |
 
 - `name`：从节点名推断（如 `IconArrowRight` → `arrow-right`，转为 kebab-case）
 - `size`：从骨架的 `w-[Npx]` 读取数字
 - `color`：若骨架有颜色，转为 your-ui-lib 色板名或直接用 hex
 
 ```html
-<Icon name="arrow-right" :size="12" />
+<Icon name="arrow-right" size="12px" />
 <!-- color 可用色板名或 CSS 颜色值 -->
-<Icon name="close" :size="20" color="primary" />
-<Icon name="search" :size="20" extClass="custom-icon" />
+<Icon name="close" size="20px" color="primary" />
+<Icon name="search" size="20px" extClass="custom-icon" />
 ```
 
 **Icon props**：
 - `name`：图标名（iconfont 名或图片链接）
-- `size`：string | number
+- `size`：string | number，推荐使用带单位字符串如 `"20px"`
 - `color`：色板颜色名或 CSS 颜色值
 - `extClass`：自定义 class
 
@@ -468,32 +483,66 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 <!-- 带标题 + 右侧分享 -->
 <DuNavigationBar share @share="handleShare">标题</DuNavigationBar>
 
-<!-- 居中标题 + 自定义右侧 -->
-<DuNavigationBar center>
-  <template #default>页面标题</template>
+<!-- 右侧放按钮 -->
+<DuNavigationBar share @share="handleShare">
+  标题
   <template #right>
-    <IconButton name="more" @click="handleMore" />
+    <Button size="small" type="outline" color="default">按钮</Button>
   </template>
 </DuNavigationBar>
 
-<!-- 透明导航栏（详情页头图场景） -->
-<DuNavigationBar transparent transparentFrontColor="white" fixed placeholder />
+<!-- 左侧首页按钮（back-icon="room"） -->
+<DuNavigationBar back-icon="room">左边是首页按钮</DuNavigationBar>
 
-<!-- 自定义左侧 -->
-<DuNavigationBar>
-  <template #left>
-    <IconButton name="close" @click="handleClose" />
+<!-- 标题 + 搜索框并排（搜索框用 flex-auto w-0 包裹） -->
+<DuNavigationBar share @share="handleShare">
+  <div>标题</div>
+  <div class="flex-auto w-0">
+    <DuSearch bg="white" :placeholder="placeholders" readonly>
+      <template #right>
+        <Icon name="camera" />
+        <DuDivider type="vertical" />
+        <Icon name="scanning" />
+      </template>
+    </DuSearch>
+  </div>
+</DuNavigationBar>
+
+<!-- 纯搜索框导航栏（无返回按钮，带颜色主题） -->
+<DuNavigationBar color="secondary" :back="false">
+  <div class="flex-auto w-0">
+    <DuSearch bg="white" placeholder="搜索">
+      <template #right>
+        <Icon name="camera" />
+        <DuDivider type="vertical" />
+        <Icon name="scanning" />
+      </template>
+    </DuSearch>
+  </div>
+</DuNavigationBar>
+
+<!-- 居中放 Tabs -->
+<DuNavigationBar center>
+  <Tabs size="large" v-model:value="tab">
+    <Tab name="discovery">发现岛</Tab>
+    <Tab name="joined">我的岛</Tab>
+  </Tabs>
+</DuNavigationBar>
+
+<!-- 透明导航栏（深色背景页面） -->
+<DuNavigationBar transparent transparentFrontColor="white" fixed placeholder>
+  <template #default>
+    <DuSearch v-model:value="keyword" placeholder="搜索" readonly @click="goSearchPage" />
   </template>
-  标题
 </DuNavigationBar>
 ```
 
 **DuNavigationBar props**：
-- `color`：色板颜色名（默认 `'default'`）
+- `color`：色板颜色名（`'default'` | `'primary'` | `'secondary'` | `'white'` 等）
 - `back`：boolean，显示返回按钮（默认 `true`）
-- `backIcon`：自定义返回图标
+- `backIcon`：自定义返回图标（如 `"room"` 显示首页图标）
 - `share`：boolean，显示分享按钮
-- `center`：boolean，标题居中
+- `center`：boolean，内容居中
 - `fixed`：boolean，固定定位
 - `placeholder`：boolean，fixed 时占位
 - `transparent`：boolean，透明背景
@@ -501,9 +550,18 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 - `appearThreshold`：number，滚动出现阈值
 - `alwaysShowContent`：boolean，透明模式下始终显示内容
 
-**Slots**：`left`、`default`（标题）、`right`
+**Slots**：`left`、`default`（标题/搜索框/Tabs）、`right`
 
-**模式识别**：骨架中顶部 flex 容器含图标+搜索栏+图标结构 → 用 `DuNavigationBar` + slots 实现
+**配套组件**：
+- `DuSearch`：搜索框，可通过 `#right` slot 添加图标（camera、scanning 等）
+
+**模式识别**：
+- 骨架中 `NavigationBar` / `NavBar` / `Header` 组件 → 使用 `DuNavigationBar`
+- 导航栏内含 `Search` / `SearchBar` 子节点 → 在 `#default` slot 中放 `DuSearch`
+- 标题和搜索框并排 → 标题用 `<div>`，搜索框用 `<div class="flex-auto w-0">` 包裹
+- 导航栏内含 `Tabs` → 在 `#default` slot 中放 `Tabs`，加 `center` 属性
+- 深色背景页面的导航栏 → 加 `transparent transparentFrontColor="white"`
+- 无返回按钮 → 加 `:back="false"`
 
 ### 图标按钮
 
@@ -553,7 +611,7 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 
 <!-- 带左右插槽 -->
 <Tabs v-model:value="activeTab">
-  <template #left><Icon name="filter" :size="16" /></template>
+  <template #left><Icon name="filter" size="16px" /></template>
   <Tab name="tab1">Tab1</Tab>
   <Tab name="tab2">Tab2</Tab>
   <template #right><IconButton name="search" /></template>
@@ -612,7 +670,7 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 ```html
 <!-- 数字徽标 -->
 <DuBadge :value="5" color="error">
-  <Icon name="notification" :size="24" />
+  <Icon name="notification" size="24px" />
 </DuBadge>
 
 <!-- 红点 -->
@@ -642,16 +700,16 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 | 骨架中 `backgroundColor: 'url(figma-image:unknown)'` | `<Image>` | 见下方 |
 
 ```html
-<Image src="imageUrl" width="100" height="100" radius="8" mode="aspectFill" />
-<Image src="coverUrl" width="100%" height="200" mode="widthFix" />
+<Image src="imageUrl" width="100px" height="100px" radius="8px" mode="aspectFill" />
+<Image src="coverUrl" width="100%" height="200px" mode="widthFix" />
 ```
 
 **Image props**：
 - `src`：图片地址
 - `mode`：`'aspectFit'` | `'aspectFill'` | `'widthFix'`
-- `width`：number | string（默认 `'100%'`）
-- `height`：number | string（默认 `'100%'`）
-- `radius`：number | string，圆角
+- `width`：number | string（默认 `'100%'`），推荐使用带单位字符串如 `"80px"` 或 `"100%"`
+- `height`：number | string（默认 `'100%'`），推荐使用带单位字符串如 `"80px"` 或 `"100%"`
+- `radius`：number | string，圆角，推荐使用带单位字符串如 `"8px"`
 - `showMenuByLongPress`：boolean
 - `extClass` / `extStyle`
 
@@ -671,7 +729,7 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 
 <!-- 带左右插槽 -->
 <DuSearch v-model:value="keyword" placeholder="搜索">
-  <template #left><Icon name="scan" :size="20" /></template>
+  <template #left><Icon name="scan" size="20px" /></template>
   <template #right><Button type="text" @click="handleSearch">搜索</Button></template>
 </DuSearch>
 ```
@@ -695,7 +753,7 @@ Figma 骨架中识别到 INSTANCE 节点时，按以下规则映射到 CustomUI 
 ```html
 <DuSwiper autoplay>
   <DuSwiperItem v-for="item in banners" :key="item.id">
-    <Image :src="item.image" width="100%" height="150" />
+    <Image :src="item.image" width="100%" height="150px" />
   </DuSwiperItem>
 </DuSwiper>
 ```
@@ -1011,7 +1069,7 @@ toast.show({ message: '加载中...', mask: true })
   <template #template>
     <!-- 骨架占位 -->
     <div class="flex gap-12 p-16">
-      <DuSkeletonAvatar :size="48" />
+      <DuSkeletonAvatar size="48px" />
       <div class="flex-1 flex flex-col gap-8">
         <DuSkeletonParagraph row-width="60%" />
         <DuSkeletonParagraph row-width="100%" />
@@ -1023,13 +1081,13 @@ toast.show({ message: '加载中...', mask: true })
 </DuSkeleton>
 
 <!-- 矩形骨架（图片占位） -->
-<DuSkeletonRectangle :width="120" :aspect-ratio="1" />
+<DuSkeletonRectangle width="120px" :aspect-ratio="1" />
 
 <!-- 头像骨架 -->
-<DuSkeletonAvatar :size="40" />
+<DuSkeletonAvatar size="40px" />
 
 <!-- 段落骨架 -->
-<DuSkeletonParagraph row-width="80%" :row-height="14" :gap="8" />
+<DuSkeletonParagraph row-width="80%" row-height="14px" gap="8px" />
 ```
 
 **DuSkeleton props**：
@@ -1037,15 +1095,15 @@ toast.show({ message: '加载中...', mask: true })
 - `extClass` / `extStyle`
 
 **DuSkeletonAvatar props**：
-- `size`：number | string，头像尺寸，默认 `56`
+- `size`：number | string，头像尺寸，默认 `56`，推荐使用带单位字符串如 `"48px"`
 
 **DuSkeletonParagraph props**：
 - `rowWidth`：string，宽度，默认 `'100%'`
-- `rowHeight`：number | string，行高，默认 `16`
-- `gap`：number | string，行间距，默认 `8`
+- `rowHeight`：number | string，行高，默认 `16`，推荐使用带单位字符串如 `"14px"`
+- `gap`：number | string，行间距，默认 `8`，推荐使用带单位字符串如 `"8px"`
 
 **DuSkeletonRectangle props**：
-- `width`：number | string，宽度，默认 `120`
+- `width`：number | string，宽度，默认 `120`，推荐使用带单位字符串如 `"120px"`
 - `aspectRatio`：number，宽高比，默认 `1`
 
 ### 复选框
@@ -1681,7 +1739,7 @@ import { ref } from 'vue'
 <div class="w-full h-[200px]" :style="{ backgroundColor: 'url(figma-image:unknown)' }"></div>
 
 <!-- 翻译 -->
-<Image :src="bannerUrl" width="100%" height="200" mode="aspectFill" />
+<Image :src="bannerUrl" width="100%" height="200px" mode="aspectFill" />
 ```
 
 **场景二：列表项图片（固定宽高）**
@@ -1691,7 +1749,7 @@ import { ref } from 'vue'
 <div class="w-[80px] h-[80px] rounded-8" :style="{ backgroundColor: 'url(figma-image:unknown)' }"></div>
 
 <!-- 翻译 -->
-<Image :src="item.cover" :width="80" :height="80" radius="8" mode="aspectFill" />
+<Image :src="item.cover" width="80px" height="80px" radius="8px" mode="aspectFill" />
 ```
 
 **场景三：宽度自适应图片**
@@ -1762,7 +1820,7 @@ import { ref } from 'vue'
   <span>订单编号</span>
   <div class="flex items-center gap-4">
     <span class="c-text-2">20250416001</span>
-    <Icon name="arrow-right" :size="12" />
+    <Icon name="arrow-right" size="12px" />
   </div>
 </div>
 
@@ -1771,7 +1829,7 @@ import { ref } from 'vue'
   <span>订单编号</span>
   <div class="flex items-center gap-4">
     <span class="c-text-2">{{ order.orderNo }}</span>
-    <Icon name="arrow-right" :size="12" />
+    <Icon name="arrow-right" size="12px" />
   </div>
 </div>
 

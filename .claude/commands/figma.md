@@ -10,19 +10,36 @@
 
 ## 步骤
 
+**第零步：确认产品 token（首次使用时询问）**
+
+如果用户没有指定 `--tokens`，询问用户：
+
+> 请选择设计稿对应的产品 token：
+> 1. Product A (product-a) - 默认
+> 2. Product B (product-b)
+> 3. Product C (product-c)
+> 4. Product D (product-d)
+
+用户选择后，在命令中添加 `--tokens=xxx` 参数。
+
 **第一步：立即运行命令生成骨架**
 
 将 `$URL` 替换为用户提供的 Figma 链接，直接执行：
 
 ```bash
-npx figma-to-code $URL --framework=vue --style=unocss
+npx figma-to-code $URL --framework=vue --tokens=product-a
 ```
+
+> CLI 会自动检测项目技术栈（UnoCSS/Tailwind → unocss 模式，小程序/RN → inline 模式，其他 → css 模式）。
+> 用户可用 `--style=unocss|css|inline` 手动覆盖。
 
 如果报错再告知用户，否则继续下一步。
 
 **第二步：读取项目规范**
 
-读取 `.claude/figma-context.md`。若文件不存在，告知用户运行 `figma-to-code init`。
+读取以下文件（若不存在则告知用户运行 `figma-to-code init`）：
+- `.claude/figma-context.md` — 组件映射、样式规范
+- `.claude/project-tokens.md` — 项目 token 列表（可选）
 
 **第三步：翻译骨架为业务组件**
 
@@ -30,9 +47,15 @@ npx figma-to-code $URL --framework=vue --style=unocss
 
 - INSTANCE 标签 → 映射为项目真实组件
 - 原始颜色/尺寸 → 替换为项目 token
-- 容器宽度 → 改为 `w-full`
+- 容器宽度 → 改为 `w-full`（unocss 模式）或 `width: 100%`（css/inline 模式）
 - 静态文字 → 改为 `{{ variable }}`，交互元素加 `@click` / `v-model` 占位
 - `<script setup>` 中补充对应变量、方法，以及按 `figma-context.md` 的「组件引入」规则添加 import
+
+**Token 匹配规则**（针对骨架中的 `var(--xxx, #fallback)` 格式）：
+
+1. 如果 `project-tokens.md` 存在且 `--xxx` 在列表中 → 保留 `var(--xxx)` 或转为项目预设类名
+2. 如果 `--xxx` 不在列表中 → 使用 fallback 值（如 `#ffffff`）
+3. 如果 `project-tokens.md` 不存在 → 使用 fallback 值
 
 **布局语义修正**（骨架可能未能完整提取，翻译时按视觉结构判断）：
 
@@ -74,7 +97,7 @@ npx figma-to-code $URL --framework=vue --style=unocss
 2. **用户确认路径后**：
    - 用该组件的 `figma-node` id 重新执行 CLI：
      ```bash
-     npx figma-to-code <原始fileKey对应的url>&node-id=<componentId> --framework=vue --style=unocss
+     npx figma-to-code <原始fileKey对应的url>&node-id=<componentId> --framework=vue
      ```
    - 对新骨架重复第三步的翻译流程
    - 将结果写入用户指定路径
