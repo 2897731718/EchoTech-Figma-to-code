@@ -250,14 +250,14 @@ describe('Code Generators', () => {
         ],
       }
       const code = new FlutterGenerator({
-        projectReferenceFiles: ['CLAUDE.md', '.claude/figma-context-custom-flutter.md']
+        projectReferenceFiles: ['CLAUDE.md', 'AGENTS.md']
       }).generate(tree, {})
       expect(code).toContain('未映射组件（annotation_config 未登记）')
       expect(code).toContain('//   PspuCard')
       expect(code).toContain('//   CustomBanner')
       expect(code).toContain('Read 项目里的参考文档确认命名/用法')
       expect(code).toContain('//   CLAUDE.md')
-      expect(code).toContain('//   .claude/figma-context-custom-flutter.md')
+      expect(code).toContain('//   AGENTS.md')
       expect(code).toContain('⚠ 未映射')
     })
 

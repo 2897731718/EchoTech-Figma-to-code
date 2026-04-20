@@ -30,19 +30,14 @@ describe('findProjectReferenceFiles', () => {
     expect(result).not.toContain('README.md')
   })
 
-  it('collects all .claude/figma-context*.md variants sorted', () => {
+  it('does not pick up files from .claude/ directory', () => {
+    // Flutter 项目约定只看根目录 CLAUDE.md / AGENTS.md，不扫 .claude/
     const claudeDir = join(tmpRoot, '.claude')
     mkdirSync(claudeDir, { recursive: true })
     writeFileSync(join(claudeDir, 'figma-context.md'), '#')
     writeFileSync(join(claudeDir, 'figma-context-custom-flutter.md'), '#')
-    writeFileSync(join(claudeDir, 'figma-context-your-ui-lib.md'), '#')
-    writeFileSync(join(claudeDir, 'other.md'), '#') // should NOT be picked
-
     const result = findProjectReferenceFiles(tmpRoot)
-    expect(result).toContain('.claude/figma-context.md')
-    expect(result).toContain('.claude/figma-context-your-ui-lib.md')
-    expect(result).toContain('.claude/figma-context-custom-flutter.md')
-    expect(result).not.toContain('.claude/other.md')
+    expect(result).toEqual([])
   })
 
   it('returns relative paths (never absolute)', () => {
