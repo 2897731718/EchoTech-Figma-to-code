@@ -14,7 +14,7 @@ import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
 import { buildComponentTree, simplifyNode, parseI18nKey, detectBaseComponentPrefixes, todoIconNames } from './tree-builder'
 import type { InstanceFoldingOptions } from './tree-builder'
-import { loadAnnotationMap, buildComponentClassNameMap } from './annotation'
+import { loadAnnotationMap, buildComponentClassNameMap, type AnnotationPlatform } from './annotation'
 
 export interface ConvertOptions {
   fileKey: string
@@ -26,6 +26,8 @@ export interface ConvertOptions {
   baseComponentPrefixes?: string[]
   /** 预加载的 token 映射（variableId → CSS 变量名），用于颜色输出 */
   preloadedTokenMap?: Map<string, string>
+  /** 当前项目可供 IDE AI 参考的 .md 路径（CLI 侧扫描传入，用于未映射组件提示） */
+  projectReferenceFiles?: string[]
 }
 
 export interface InstanceComponent {
@@ -297,7 +299,9 @@ export async function convertFigmaToCode(
   const framework = options.framework ?? 'html'
   const styleFormat = options.styleFormat ?? 'css'
 
-  const generator = createGenerator(framework)
+  const generator = createGenerator(framework, {
+    flutter: { projectReferenceFiles: options.projectReferenceFiles }
+  })
   const styleConverter = createStyleConverter(styleFormat)
 
   // 构建 Variable ID → CSS 变量名映射（失败时静默降级）
@@ -364,7 +368,7 @@ export async function convertFigmaToCode(
   }
 
   // 组件映射：通过 annotation_config 将 componentKey → Flutter 类名
-  let componentClassNameMap: Map<string, string> | undefined
+  let componentClassNameMap: Map<string, AnnotationPlatform> | undefined
   if (framework === 'flutter') {
     try {
       const annotationMap = await loadAnnotationMap('flutter')

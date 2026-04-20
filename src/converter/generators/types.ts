@@ -31,6 +31,16 @@ export interface ComponentNode {
   iconName?: string
   /** 横滑容器（子元素总宽超过容器宽） */
   isScrollContainer?: boolean
+  /** 横滑容器的滚动轴（目前只支持 'horizontal'） */
+  scrollAxis?: 'horizontal' | 'vertical'
+  /** Figma auto-layout wrap（用于识别 GridView） */
+  layoutWrap?: 'NO_WRAP' | 'WRAP'
+  /** 来自 annotation_config 的组件文档链接（external wiki / GitLab 源码） */
+  componentDocLink?: string
+  /** 折叠前从 INSTANCE 子节点抽取的 TEXT 内容（设计师的直接覆盖，不走 componentProperties） */
+  instanceTextOverrides?: Array<{ name?: string; text: string }>
+  /** 是 INSTANCE/COMPONENT 但未在 annotation_config 命中映射（tag 走 Figma 节点名降级） */
+  isUnmappedInstance?: boolean
 }
 
 export interface StyleConverter {

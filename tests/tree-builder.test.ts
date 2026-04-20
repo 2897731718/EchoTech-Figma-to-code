@@ -153,6 +153,40 @@ describe('tree-builder', () => {
       expect(inst?.children?.length).toBe(0)
     })
 
+    it('折叠叶子 INSTANCE 时保留子节点 TEXT 覆盖', () => {
+      const node: Node = {
+        id: 'root',
+        name: 'Root',
+        type: 'FRAME',
+        visible: true,
+        children: [
+          {
+            id: 'inst',
+            name: 'PspuCard',
+            type: 'INSTANCE',
+            componentId: 'card-001',
+            visible: true,
+            children: [
+              { id: 't1', name: 'Title', type: 'TEXT', visible: true, characters: '暗黑破坏神4' },
+              { id: 'inner', name: 'Content', type: 'FRAME', visible: true, children: [
+                { id: 't2', name: 'Subtitle', type: 'TEXT', visible: true, characters: '跟车服务' }
+              ] },
+              { id: 't3', name: 'Empty', type: 'TEXT', visible: true, characters: '   ' },
+              { id: 'tHidden', name: 'Hidden', type: 'TEXT', visible: false, characters: 'skip me' }
+            ]
+          }
+        ]
+      } as unknown as Node
+
+      const simplified = simplifyNode(node, true)
+      const inst = simplified.children?.[0] as Node & { _textOverrides?: Array<{ name?: string; text: string }> }
+      expect(inst.children?.length).toBe(0)
+      expect(inst._textOverrides).toEqual([
+        { name: 'Title', text: '暗黑破坏神4' },
+        { name: 'Subtitle', text: '跟车服务' }
+      ])
+    })
+
     it.skip('包含嵌套 INSTANCE 的组件不应该被折叠', () => {
       const node: Node = {
         id: 'root',

@@ -5,6 +5,7 @@ import { convertNodeToCSS } from './index'
 import { convertPaintToColor, type VariableMap } from './colors'
 import { convertFillsToBackgroundColor } from './styles'
 import type { FrameNode } from './layout'
+import type { AnnotationPlatform } from './annotation'
 
 // ─── INSTANCE 智能折叠：基础组件检测 ─────────────────────────────────────────
 
@@ -226,6 +227,27 @@ function isPassthrough(node: Node): boolean {
 }
 
 /**
+ * 递归抓取节点子树里所有可见 TEXT 的 characters，用于 INSTANCE 折叠前保留文本。
+ * 空串、不可见节点跳过；顺序为深度优先遍历顺序（保留视觉阅读顺序）。
+ */
+function collectTextOverrides(nodes: Node[]): Array<{ name?: string; text: string }> {
+  const result: Array<{ name?: string; text: string }> = []
+  for (const n of nodes) {
+    if (n.visible === false) continue
+    if (n.type === 'TEXT') {
+      const text = (n.characters ?? '').trim()
+      if (text.length > 0) {
+        result.push(n.name ? { name: n.name, text } : { text })
+      }
+    }
+    if (n.children) {
+      result.push(...collectTextOverrides(n.children))
+    }
+  }
+  return result
+}
+
+/**
  * 简化 Figma 节点树：
  * - 折叠基础组件 INSTANCE（配置前缀 > 自动检测 emoji > 叶子 INSTANCE 兜底）
  * - 折叠矢量图标容器（children 全是 VECTOR）
@@ -242,7 +264,11 @@ export function simplifyNode(
     // annotation_config 精确映射优先
     const isMapped = node.componentId && mappedComponentIds?.has(node.componentId)
     if (isMapped || shouldFoldInstance(node, foldingOptions)) {
-      return { ...node, children: [] }
+      // 折叠前先抓子节点的 TEXT 文本，避免非 property-bound 的直接覆盖丢失
+      const textOverrides = collectTextOverrides(node.children ?? [])
+      const folded = { ...node, children: [] } as Node & { _textOverrides?: Array<{ name?: string; text: string }> }
+      if (textOverrides.length > 0) folded._textOverrides = textOverrides
+      return folded
     }
     // 业务/组合组件：继续递归简化子节点，不折叠
   }
@@ -286,7 +312,7 @@ export function buildComponentTree(
   nodeMap: Map<string, Node>,
   variableMap?: VariableMap,
   i18nMap?: Map<string, string>,
-  componentClassNameMap?: Map<string, string>
+  componentClassNameMap?: Map<string, AnnotationPlatform>
 ): ComponentNode | null {
   if (node.visible === false) return null
 
@@ -318,6 +344,8 @@ export function buildComponentTree(
   const isVectorIcon = (node as Node & { _vectorIcon?: boolean })._vectorIcon === true
   const iconName = isVectorIcon && node.name ? extractIconName(node.name) : undefined
   const scrollContainer = isScrollContainer(node)
+  const annotation = node.componentId ? componentClassNameMap?.get(node.componentId) : undefined
+  const textOverrides = (node as Node & { _textOverrides?: Array<{ name?: string; text: string }> })._textOverrides
 
   const componentNode: ComponentNode = {
     tag: getTagForNode(node, componentClassNameMap),
@@ -333,7 +361,16 @@ export function buildComponentTree(
     // 矢量图标容器标记 + 图标名
     ...(isVectorIcon ? { isVectorIcon: true, iconName } : {}),
     // 横滑容器标记
-    ...(scrollContainer ? { isScrollContainer: true } : {})
+    ...(scrollContainer ? { isScrollContainer: true, scrollAxis: 'horizontal' as const } : {}),
+    // auto-layout wrap（GridView 识别依据）
+    ...(node.layoutWrap === 'WRAP' ? { layoutWrap: 'WRAP' as const } : {}),
+    // 组件文档链接（供生成器输出 import / 注释）
+    ...(annotation?.docLink ? { componentDocLink: annotation.docLink } : {}),
+    // 折叠前抓到的直接文本覆盖（设计师直接改子节点文字的场景）
+    ...(textOverrides && textOverrides.length > 0 ? { instanceTextOverrides: textOverrides } : {}),
+    // 未映射 INSTANCE/COMPONENT：tag 是由 nameToPascalCase 降级得来，需要提示 IDE AI 查阅项目规范
+    ...(((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.componentId && !annotation?.className)
+      ? { isUnmappedInstance: true as const } : {})
   }
 
   if (styleResult.className) {
@@ -523,7 +560,7 @@ function getContentWidth(parent: Node): number | null {
   return box.width - pl - pr
 }
 
-function getTagForNode(node: Node, componentClassNameMap?: Map<string, string>): string {
+function getTagForNode(node: Node, componentClassNameMap?: Map<string, AnnotationPlatform>): string {
   switch (node.type) {
     case 'TEXT':
       return 'span'
@@ -531,8 +568,8 @@ function getTagForNode(node: Node, componentClassNameMap?: Map<string, string>):
     case 'COMPONENT':
       // 优先用 annotation_config 精确映射
       if (node.componentId && componentClassNameMap) {
-        const className = componentClassNameMap.get(node.componentId)
-        if (className) return className
+        const annotation = componentClassNameMap.get(node.componentId)
+        if (annotation?.className) return annotation.className
       }
       return nameToPascalCase(node.name)
     case 'FRAME':

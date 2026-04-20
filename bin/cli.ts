@@ -16,6 +16,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
 import { convertFigmaToCode } from '../src/index'
+import { checkForUpdate, printUpdateBanner, runAutoUpdate } from '../src/version-check'
+import { findProjectReferenceFiles } from '../src/project-references'
 
 // ── 自动检测项目样式模式 ────────────────────────────────────────────────────
 
@@ -447,6 +449,7 @@ if (command === 'init') {
     console.log('  /figma <figma-url>               生成代码')
     console.log('  编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
   }
+  maybeCheckForUpdate()
   process.exit(0)
 }
 
@@ -506,10 +509,15 @@ if (!url) {
   console.log('  figma-to-code <figma-url> [选项]           生成骨架并输出到 stdout\n')
   console.log('选项：')
   console.log('  --framework=vue|html|react|flutter   输出框架，默认 vue')
-  console.log('  --style=auto|unocss|css|inline       样式格式，默认 auto（自动检测）')
+  console.log('  --style=auto|unocss|css|inline       样式格式，默认 auto（自动检测，flutter 时自动忽略）')
   console.log('  --tokens=product-a|product-b|product-c|product-d  token 映射，默认 product-a')
+  console.log('  --skip-version-check                 跳过远程版本检查（或设 FIGMA_TO_CODE_SKIP_VERSION_CHECK=1）')
   console.log('  --help, -h                   显示帮助信息')
   console.log('  --version, -v                显示版本号')
+  console.log('')
+  console.log('环境变量：')
+  console.log('  FIGMA_TO_CODE_AUTO_UPDATE=1        检测到新版本时自动执行 pnpm add -g 升级')
+  console.log('  FIGMA_TO_CODE_SKIP_VERSION_CHECK=1 完全禁用版本检查')
   process.exit(args.includes('--help') || args.includes('-h') ? 0 : 1)
 }
 
@@ -535,12 +543,14 @@ try {
 }
 
 try {
+  const projectReferenceFiles = framework === 'flutter' ? findProjectReferenceFiles() : undefined
   const result = await convertFigmaToCode({
     fileKey,
     nodeId,
     framework,
     styleFormat,
     preloadedTokenMap,
+    projectReferenceFiles,
   })
 
   // 子组件列表输出到 stderr，供用户终端查看
@@ -565,5 +575,25 @@ try {
   } else {
     console.error(`✖ ${msg}`)
   }
+  maybeCheckForUpdate()
   process.exit(1)
+}
+
+maybeCheckForUpdate()
+
+function maybeCheckForUpdate(): void {
+  if (args.includes('--skip-version-check')) return
+  if (process.env.FIGMA_TO_CODE_SKIP_VERSION_CHECK === '1') return
+  try {
+    const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../package.json')
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string }
+    const info = checkForUpdate(pkg.version)
+    if (!info) return
+    printUpdateBanner(info)
+    if (process.env.FIGMA_TO_CODE_AUTO_UPDATE === '1') {
+      runAutoUpdate(info.latest)
+    }
+  } catch {
+    // 版本检查任何异常都不影响主流程
+  }
 }

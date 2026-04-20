@@ -175,16 +175,156 @@ describe('Code Generators', () => {
       expect(code).toContain('// INSTANCE figma-node: 123:456')
     })
 
-    it('should handle i18n keys', () => {
+    it('emits custom_components import when any mapped component uses it', () => {
+      const tree: ComponentNode = {
+        tag: 'div',
+        parsedStyles: { layout: { direction: 'row', gap: 0 } },
+        children: [
+          {
+            tag: 'Button',
+            componentId: '41098:23190',
+            componentDocLink: 'https://example.com/wiki/wikcn6DYhscLhzWh04ykmofoI4e',
+          },
+          {
+            tag: 'Divider',
+            componentId: '26553:168119',
+            componentDocLink: 'custom_components/lib/src/divider/divider.dart',
+          },
+        ],
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain("import 'package:custom_components/custom_components.dart';")
+      expect(code).toContain('doc: custom_components/lib/src/divider/divider.dart')
+      // external wiki 被归入"未知"区块
+      expect(code).toContain('未在公共库 custom_components')
+      expect(code).toContain('example.com')
+    })
+
+    it('emits instanceTextOverrides as trailing texts comment', () => {
+      const tree: ComponentNode = {
+        tag: 'PspuCard',
+        componentId: 'card-001',
+        semanticName: 'PspuCard',
+        instanceTextOverrides: [
+          { name: 'Title', text: '暗黑破坏神4' },
+          { name: 'Subtitle', text: '跟车服务' }
+        ]
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('texts: "暗黑破坏神4" / "跟车服务"')
+      expect(code).toContain('PspuCard()')
+    })
+
+    it('dedupes instanceTextOverrides that already exist in componentProps TEXT', () => {
+      const tree: ComponentNode = {
+        tag: 'Button',
+        componentId: 'btn-001',
+        componentProps: {
+          Text: { type: 'TEXT', value: '立即购买' }
+        },
+        instanceTextOverrides: [
+          { name: 'Label', text: '立即购买' }, // 与 componentProps.Text 重复，跳过
+          { name: 'Subtitle', text: '限时优惠' }
+        ]
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('texts: "限时优惠"')
+      expect(code).not.toMatch(/texts:.*"立即购买"/)
+    })
+
+    it('lists unmapped instance tags + project reference files in header', () => {
+      const tree: ComponentNode = {
+        tag: 'div',
+        parsedStyles: { layout: { direction: 'column', gap: 0 } },
+        children: [
+          {
+            tag: 'PspuCard',
+            componentId: 'biz-001',
+            isUnmappedInstance: true,
+          },
+          {
+            tag: 'CustomBanner',
+            componentId: 'biz-002',
+            isUnmappedInstance: true,
+          },
+        ],
+      }
+      const code = new FlutterGenerator({
+        projectReferenceFiles: ['CLAUDE.md', '.claude/figma-context-custom-flutter.md']
+      }).generate(tree, {})
+      expect(code).toContain('未映射组件（annotation_config 未登记）')
+      expect(code).toContain('//   PspuCard')
+      expect(code).toContain('//   CustomBanner')
+      expect(code).toContain('Read 项目里的参考文档确认命名/用法')
+      expect(code).toContain('//   CLAUDE.md')
+      expect(code).toContain('//   .claude/figma-context-custom-flutter.md')
+      expect(code).toContain('⚠ 未映射')
+    })
+
+    it('warns when no reference files found in project', () => {
+      const tree: ComponentNode = {
+        tag: 'PspuCard',
+        componentId: 'biz-001',
+        isUnmappedInstance: true,
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('未在项目根扫到 CLAUDE.md')
+    })
+
+    it('does not emit unmapped block when all instances are mapped', () => {
+      const tree: ComponentNode = {
+        tag: 'Button',
+        componentId: 'mapped-001',
+        componentDocLink: 'custom_components/lib/src/button/button.dart',
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).not.toContain('未映射组件')
+      expect(code).not.toContain('⚠ 未映射')
+    })
+
+    it('does not emit import when no mapped components present', () => {
+      const tree: ComponentNode = {
+        tag: 'div',
+        parsedStyles: { layout: { direction: 'row', gap: 0 } },
+        children: [
+          { tag: 'FormItemLine', componentId: '123:456' },
+        ],
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).not.toContain('import ')
+      expect(code).not.toContain('未在公共库')
+    })
+
+    it('emits CustomLocalizations call for simple i18n key', () => {
       const tree: ComponentNode = {
         tag: 'span',
         text: '提交',
-        i18nKey: 'common.submit'
+        i18nKey: 'Common.Submit'
       }
       const generator = new FlutterGenerator()
       const code = generator.generate(tree, {})
 
-      expect(code).toContain('S.of(context).common_submit')
+      expect(code).toContain('CustomLocalizationsManager.current(context).commonSubmit')
+    })
+
+    it('strips spaces in i18n key segment to match ARB identifier', () => {
+      const tree: ComponentNode = {
+        tag: 'span',
+        text: 'Apple signin',
+        i18nKey: 'LoginIn.Apple signin'
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('CustomLocalizationsManager.current(context).loginInApplesignin')
+    })
+
+    it('strips punctuation in i18n key segment', () => {
+      const tree: ComponentNode = {
+        tag: 'span',
+        text: "Can't use the phone number?",
+        i18nKey: "LoginIn.Can't use the phone number?"
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('CustomLocalizationsManager.current(context).loginInCantusethephonenumber')
     })
 
     it('should generate SizedBox for size-only nodes', () => {
@@ -214,6 +354,67 @@ describe('Code Generators', () => {
       expect(code).toContain('Row(')
       expect(code).toContain('MainAxisAlignment.spaceBetween')
       expect(code).toContain('CrossAxisAlignment.center')
+    })
+
+    it('emits SingleChildScrollView for heterogeneous horizontal scroll', () => {
+      const tree: ComponentNode = {
+        tag: 'div',
+        isScrollContainer: true,
+        scrollAxis: 'horizontal',
+        parsedStyles: { layout: { direction: 'row', gap: 12 }, width: 375, height: 120 },
+        children: [
+          { tag: 'Card', parsedStyles: { width: 200, height: 120 } },
+          { tag: 'Banner', parsedStyles: { width: 300, height: 120 } },
+          { tag: 'Promo', parsedStyles: { width: 250, height: 120 } },
+        ],
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('SingleChildScrollView(')
+      expect(code).toContain('scrollDirection: Axis.horizontal')
+      expect(code).toContain('Row(')
+      expect(code).toContain('spacing: 12')
+    })
+
+    it('emits ListView.builder for homogeneous long horizontal scroll', () => {
+      const tree: ComponentNode = {
+        tag: 'div',
+        isScrollContainer: true,
+        scrollAxis: 'horizontal',
+        parsedStyles: { layout: { direction: 'row', gap: 8 }, width: 375, height: 120 },
+        children: Array.from({ length: 6 }, () => ({
+          tag: 'CardItem',
+          parsedStyles: { width: 100, height: 120 },
+        })),
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('ListView.builder(')
+      expect(code).toContain('itemCount: 6')
+      expect(code).toContain('itemBuilder:')
+      expect(code).toContain('SizedBox(')
+      expect(code).toContain('height: 120')
+    })
+
+    it('emits shrinkWrap + NeverScrollable for nested same-axis scroll', () => {
+      const inner: ComponentNode = {
+        tag: 'div',
+        isScrollContainer: true,
+        scrollAxis: 'horizontal',
+        parsedStyles: { layout: { direction: 'row', gap: 8 }, width: 900, height: 120 },
+        children: Array.from({ length: 5 }, () => ({
+          tag: 'Tile',
+          parsedStyles: { width: 80, height: 120 },
+        })),
+      }
+      const outer: ComponentNode = {
+        tag: 'div',
+        isScrollContainer: true,
+        scrollAxis: 'horizontal',
+        parsedStyles: { layout: { direction: 'row', gap: 0 }, width: 375, height: 400 },
+        children: [inner, inner, inner],
+      }
+      const code = new FlutterGenerator().generate(outer, {})
+      expect(code).toContain('shrinkWrap: true')
+      expect(code).toContain('NeverScrollableScrollPhysics()')
     })
   })
 })

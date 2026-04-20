@@ -66,6 +66,7 @@ export interface Node {
   characterStyleOverrides?: number[]
   styleOverrideTable?: Record<number, TypeStyle>
   layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL'
+  layoutWrap?: 'NO_WRAP' | 'WRAP'
   primaryAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'SPACE_BETWEEN'
   counterAxisAlignItems?: 'MIN' | 'CENTER' | 'MAX' | 'BASELINE'
   paddingLeft?: number

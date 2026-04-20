@@ -1,6 +1,6 @@
 const ANNOTATION_CONFIG_URL = 'https://config-cdn.product-aapp.com/dumpling_plugin/annotation_config.json'
 
-interface AnnotationPlatform {
+export interface AnnotationPlatform {
   className: string
   codeStandard?: string
   developer?: string
@@ -25,13 +25,13 @@ interface AnnotationConfig {
 }
 
 /**
- * 从远程 CDN 拉取 annotation_config，构建 componentKey → className 映射。
+ * 从远程 CDN 拉取 annotation_config，构建 componentKey → AnnotationPlatform 映射。
  * 失败时静默降级返回空映射。
  */
 export async function loadAnnotationMap(
   platform: 'flutter'
-): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
+): Promise<Map<string, AnnotationPlatform>> {
+  const map = new Map<string, AnnotationPlatform>()
 
   try {
     const response = await fetch(ANNOTATION_CONFIG_URL)
@@ -45,12 +45,12 @@ export async function loadAnnotationMap(
     for (const entry of config.annotations) {
       const platformConfig = entry.annotation.platforms[platform]
       if (platformConfig?.className) {
-        map.set(entry.componentKey, platformConfig.className)
+        map.set(entry.componentKey, platformConfig)
       }
     }
 
     console.error(`[figma-to-code] 组件映射: ${map.size} 个 (${platform})`)
-  } catch (e) {
+  } catch {
     console.error(`[figma-to-code] annotation_config 加载失败，组件名将使用 Figma 节点名降级`)
   }
 
@@ -58,7 +58,7 @@ export async function loadAnnotationMap(
 }
 
 /**
- * 从 FileResponse.components 构建 componentId → className 映射。
+ * 从 FileResponse.components 构建 componentId → AnnotationPlatform 映射。
  *
  * 匹配策略：
  * 1. 用 Component 自身的 key 匹配 annotationMap
@@ -67,25 +67,23 @@ export async function loadAnnotationMap(
  */
 export function buildComponentClassNameMap(
   fileComponents: Record<string, { key: string; name: string; componentSetId?: string }>,
-  annotationMap: Map<string, string>,
+  annotationMap: Map<string, AnnotationPlatform>,
   fileComponentSets?: Record<string, { key: string; name: string }>
-): Map<string, string> {
-  const map = new Map<string, string>()
+): Map<string, AnnotationPlatform> {
+  const map = new Map<string, AnnotationPlatform>()
 
   for (const [componentId, component] of Object.entries(fileComponents)) {
-    // 1. 先用 Component 自身的 key 匹配
-    let className = annotationMap.get(component.key)
+    let annotation = annotationMap.get(component.key)
 
-    // 2. 如果没匹配到且是变体，用 ComponentSet 的 key 匹配
-    if (!className && component.componentSetId && fileComponentSets) {
+    if (!annotation && component.componentSetId && fileComponentSets) {
       const componentSet = fileComponentSets[component.componentSetId]
       if (componentSet) {
-        className = annotationMap.get(componentSet.key)
+        annotation = annotationMap.get(componentSet.key)
       }
     }
 
-    if (className) {
-      map.set(componentId, className)
+    if (annotation) {
+      map.set(componentId, annotation)
     }
   }
 
