@@ -11,6 +11,13 @@ rollup.config.js
 scripts/*
 tsconfig*
 
+# .claude 中不需要发布的文件
+.claude/figma-context.md
+.claude/skills/
+
+# 开发文档
+GITLAB_PUBLISH.md
+
 
 
 

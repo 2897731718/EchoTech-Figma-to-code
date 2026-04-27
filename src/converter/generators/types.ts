@@ -39,6 +39,8 @@ export interface ComponentNode {
   componentDocLink?: string
   /** 折叠前从 INSTANCE 子节点抽取的 TEXT 内容（设计师的直接覆盖，不走 componentProperties） */
   instanceTextOverrides?: Array<{ name?: string; text: string }>
+  /** 折叠前从 INSTANCE 子节点抽取的嵌套组件（如 NavigationBar 内的 SearchBar） */
+  nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }>
   /** 是 INSTANCE/COMPONENT 但未在 annotation_config 命中映射（tag 走 Figma 节点名降级） */
   isUnmappedInstance?: boolean
 }

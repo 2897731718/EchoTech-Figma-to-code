@@ -227,6 +227,44 @@ function isPassthrough(node: Node): boolean {
 }
 
 /**
+ * 递归收集节点子树里的嵌套 INSTANCE/COMPONENT，用于折叠时保留子组件信息。
+ * 返回：组件名、slot 位置（从父节点名推断）、componentId
+ */
+function collectNestedInstances(
+  nodes: Node[],
+  parentSlot?: string
+): Array<{ name: string; slot?: string; componentId?: string }> {
+  const result: Array<{ name: string; slot?: string; componentId?: string }> = []
+  for (const n of nodes) {
+    if (n.visible === false) continue
+
+    // 推断 slot 位置：从节点名中提取 Left/Center/Right 等
+    let slot = parentSlot
+    if (n.name) {
+      const slotMatch = n.name.match(/\/\s*(Left|Center|Right|Top|Bottom|Header|Footer)$/i)
+      if (slotMatch) slot = slotMatch[1].toLowerCase()
+    }
+
+    if (n.type === 'INSTANCE' || n.type === 'COMPONENT') {
+      const name = n.name?.trim() ?? ''
+      if (name) {
+        result.push({
+          name,
+          slot,
+          componentId: n.componentId
+        })
+      }
+    }
+
+    // 继续递归（即使当前是 INSTANCE，也要看它的子节点可能有更深的嵌套）
+    if (n.children) {
+      result.push(...collectNestedInstances(n.children, slot))
+    }
+  }
+  return result
+}
+
+/**
  * 递归抓取节点子树里所有可见 TEXT 的 characters，用于 INSTANCE 折叠前保留文本。
  * 空串、不可见节点跳过；顺序为深度优先遍历顺序（保留视觉阅读顺序）。
  */
@@ -264,10 +302,15 @@ export function simplifyNode(
     // annotation_config 精确映射优先
     const isMapped = node.componentId && mappedComponentIds?.has(node.componentId)
     if (isMapped || shouldFoldInstance(node, foldingOptions)) {
-      // 折叠前先抓子节点的 TEXT 文本，避免非 property-bound 的直接覆盖丢失
+      // 折叠前先抓子节点的 TEXT 文本和嵌套 INSTANCE，避免丢失
       const textOverrides = collectTextOverrides(node.children ?? [])
-      const folded = { ...node, children: [] } as Node & { _textOverrides?: Array<{ name?: string; text: string }> }
+      const nestedInstances = collectNestedInstances(node.children ?? [])
+      const folded = { ...node, children: [] } as Node & {
+        _textOverrides?: Array<{ name?: string; text: string }>
+        _nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }>
+      }
       if (textOverrides.length > 0) folded._textOverrides = textOverrides
+      if (nestedInstances.length > 0) folded._nestedInstances = nestedInstances
       return folded
     }
     // 业务/组合组件：继续递归简化子节点，不折叠
@@ -346,6 +389,7 @@ export function buildComponentTree(
   const scrollContainer = isScrollContainer(node)
   const annotation = node.componentId ? componentClassNameMap?.get(node.componentId) : undefined
   const textOverrides = (node as Node & { _textOverrides?: Array<{ name?: string; text: string }> })._textOverrides
+  const nestedInstances = (node as Node & { _nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }> })._nestedInstances
 
   const componentNode: ComponentNode = {
     tag: getTagForNode(node, componentClassNameMap),
@@ -368,6 +412,8 @@ export function buildComponentTree(
     ...(annotation?.docLink ? { componentDocLink: annotation.docLink } : {}),
     // 折叠前抓到的直接文本覆盖（设计师直接改子节点文字的场景）
     ...(textOverrides && textOverrides.length > 0 ? { instanceTextOverrides: textOverrides } : {}),
+    // 折叠前抓到的嵌套 INSTANCE（如 NavigationBar 内的 SearchBar）
+    ...(nestedInstances && nestedInstances.length > 0 ? { nestedInstances } : {}),
     // 未映射 INSTANCE/COMPONENT：tag 是由 nameToPascalCase 降级得来，需要提示 IDE AI 查阅项目规范
     ...(((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.componentId && !annotation?.className)
       ? { isUnmappedInstance: true as const } : {})

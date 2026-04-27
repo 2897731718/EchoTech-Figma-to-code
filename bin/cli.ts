@@ -11,7 +11,7 @@
  *   --style=auto|unocss|css|inline    默认 auto（自动检测项目技术栈）
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
@@ -390,7 +390,7 @@ if (command === 'init') {
 
   // 复制 skill 文件（仅 Web 端，Flutter 端不再需要 skill）
   if (uiLib !== 'custom-flutter') {
-    const skillSrc = resolve(pkgRoot, '.claude/commands/figma.md')
+    const skillSrc = resolve(templateDir, 'commands/figma.md')
     const skillDst = resolve(commandsDir, 'figma.md')
     if (existsSync(skillSrc)) {
       if (existsSync(skillDst)) {
@@ -402,14 +402,31 @@ if (command === 'init') {
     }
   }
 
-  // 选择 context 模板
+  // 复制 figma-base 目录（按需加载的组件规则，仅特定 UI 库有）
+  if (uiLib) {
+    const baseTemplateName = `figma-base-${uiLib}`
+    const baseSrc = resolve(templateDir, baseTemplateName)
+    const baseDst = resolve(targetDir, 'figma-base')
+    if (existsSync(baseSrc)) {
+      if (existsSync(baseDst)) {
+        console.log('⚠ .claude/figma-base/ 已存在，跳过（使用 figma-to-code update 更新）')
+      } else {
+        cpSync(baseSrc, baseDst, { recursive: true })
+        const versionFile = resolve(baseDst, 'version.txt')
+        const version = existsSync(versionFile) ? readFileSync(versionFile, 'utf-8').trim() : 'unknown'
+        console.log(`✔ 已创建 .claude/figma-base/（版本 ${version}）`)
+      }
+    }
+  }
+
+  // 选择 context 模板（精简版，项目定制部分）
   const templateName = uiLib ? `figma-context-${uiLib}.md` : 'figma-context.md'
   const contextSrc = resolve(templateDir, templateName)
   const contextDst = resolve(targetDir, 'figma-context.md')
 
   if (!existsSync(contextSrc)) {
     console.error(`✖ 未找到模板：${templateName}`)
-    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-custom-flutter.md`)
+    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-react.md、figma-context-custom-flutter.md`)
     process.exit(1)
   }
 
@@ -450,6 +467,133 @@ if (command === 'init') {
     console.log('  编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
   }
   maybeCheckForUpdate()
+  process.exit(0)
+}
+
+// ── update 子命令 ────────────────────────────────────────────────────────────
+
+if (command === 'update') {
+  // figma-to-code update [--ui=your-ui-lib]
+  const uiLib = args.find(a => a.startsWith('--ui='))?.split('=')[1]
+
+  const __dir = dirname(fileURLToPath(import.meta.url))
+  const pkgRoot = resolve(__dir, '../..')
+  const templateDir = resolve(pkgRoot, 'template')
+  const targetDir = resolve(process.cwd(), '.claude')
+  const baseDst = resolve(targetDir, 'figma-base')
+
+  // 检测当前使用的 UI 库
+  let detectedUiLib = uiLib
+  if (!detectedUiLib && existsSync(baseDst)) {
+    const indexPath = resolve(baseDst, 'index.json')
+    if (existsSync(indexPath)) {
+      try {
+        const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'))
+        detectedUiLib = indexData.uiLib
+      } catch { /* ignore */ }
+    }
+  }
+
+  if (!detectedUiLib) {
+    console.error('✖ 无法检测当前 UI 库，请使用 --ui=<name> 指定')
+    console.error('  例如: figma-to-code update --ui=your-ui-lib')
+    process.exit(1)
+  }
+
+  // generic 使用 figma-base，其他使用 figma-base-{uiLib}
+  const baseSrcName = detectedUiLib === 'generic' ? 'figma-base' : `figma-base-${detectedUiLib}`
+  const baseSrc = resolve(templateDir, baseSrcName)
+  if (!existsSync(baseSrc)) {
+    console.error(`✖ 未找到 ${baseSrcName} 模板`)
+    process.exit(1)
+  }
+
+  // 读取当前版本
+  let currentVersion = 'unknown'
+  const currentVersionFile = resolve(baseDst, 'version.txt')
+  if (existsSync(currentVersionFile)) {
+    currentVersion = readFileSync(currentVersionFile, 'utf-8').trim()
+  }
+
+  // 读取新版本
+  const newVersionFile = resolve(baseSrc, 'version.txt')
+  const newVersion = existsSync(newVersionFile) ? readFileSync(newVersionFile, 'utf-8').trim() : 'unknown'
+
+  if (currentVersion === newVersion) {
+    console.log(`✔ figma-base 已是最新版本（${currentVersion}）`)
+    process.exit(0)
+  }
+
+  // 删除旧目录，复制新目录
+  if (existsSync(baseDst)) {
+    rmSync(baseDst, { recursive: true })
+  }
+  cpSync(baseSrc, baseDst, { recursive: true })
+  console.log(`✔ figma-base 已更新: ${currentVersion} → ${newVersion}`)
+  console.log('  （.claude/figma-context.md 保持不变，如需更新请手动合并）')
+  process.exit(0)
+}
+
+// ── diff 子命令 ────────────────────────────────────────────────────────────
+
+if (command === 'diff') {
+  // figma-to-code diff [--ui=your-ui-lib]
+  const uiLib = args.find(a => a.startsWith('--ui='))?.split('=')[1]
+
+  const __dir = dirname(fileURLToPath(import.meta.url))
+  const pkgRoot = resolve(__dir, '../..')
+  const templateDir = resolve(pkgRoot, 'template')
+  const targetDir = resolve(process.cwd(), '.claude')
+  const baseDst = resolve(targetDir, 'figma-base')
+
+  // 检测当前使用的 UI 库
+  let detectedUiLib = uiLib
+  if (!detectedUiLib && existsSync(baseDst)) {
+    const indexPath = resolve(baseDst, 'index.json')
+    if (existsSync(indexPath)) {
+      try {
+        const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'))
+        detectedUiLib = indexData.uiLib
+      } catch { /* ignore */ }
+    }
+  }
+
+  if (!detectedUiLib) {
+    console.error('✖ 无法检测当前 UI 库，请使用 --ui=<name> 指定')
+    console.error('  例如: figma-to-code diff --ui=your-ui-lib')
+    process.exit(1)
+  }
+
+  // generic 使用 figma-base，其他使用 figma-base-{uiLib}
+  const baseSrcName = detectedUiLib === 'generic' ? 'figma-base' : `figma-base-${detectedUiLib}`
+  const baseSrc = resolve(templateDir, baseSrcName)
+  if (!existsSync(baseSrc)) {
+    console.error(`✖ 未找到 ${baseSrcName} 模板`)
+    process.exit(1)
+  }
+
+  // 读取当前版本
+  let currentVersion = '未安装'
+  const currentVersionFile = resolve(baseDst, 'version.txt')
+  if (existsSync(currentVersionFile)) {
+    currentVersion = readFileSync(currentVersionFile, 'utf-8').trim()
+  }
+
+  // 读取新版本
+  const newVersionFile = resolve(baseSrc, 'version.txt')
+  const newVersion = existsSync(newVersionFile) ? readFileSync(newVersionFile, 'utf-8').trim() : 'unknown'
+
+  console.log(`figma-base 版本对比（${detectedUiLib}）：`)
+  console.log(`  当前版本: ${currentVersion}`)
+  console.log(`  最新版本: ${newVersion}`)
+
+  if (currentVersion === newVersion) {
+    console.log('\n✔ 已是最新版本')
+  } else if (currentVersion === '未安装') {
+    console.log('\n⚠ 未安装 figma-base，运行 figma-to-code init --ui=' + detectedUiLib + ' 初始化')
+  } else {
+    console.log('\n⚠ 有可用更新，运行 figma-to-code update 更新')
+  }
   process.exit(0)
 }
 
@@ -506,6 +650,8 @@ if (!url) {
   }
   console.log('用法：')
   console.log('  figma-to-code init [--ui=your-ui-lib]          初始化项目 skill 文件')
+  console.log('  figma-to-code update [--ui=your-ui-lib]        更新 figma-base 组件规则（保留项目配置）')
+  console.log('  figma-to-code diff [--ui=your-ui-lib]          对比 figma-base 版本')
   console.log('  figma-to-code <figma-url> [选项]           生成骨架并输出到 stdout\n')
   console.log('选项：')
   console.log('  --framework=vue|html|react|flutter   输出框架，默认 vue')

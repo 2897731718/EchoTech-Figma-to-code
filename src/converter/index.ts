@@ -191,6 +191,14 @@ export function convertNodeToCSS(
     const layoutStyles = convertAutoLayout(node as FrameNode)
     Object.assign(css, layoutStyles)
 
+    // 检测子元素是否有绝对定位，如有则父容器需要 relative
+    const hasAbsoluteChild = (node.children ?? []).some(
+      c => c.visible !== false && c.layoutPositioning === 'ABSOLUTE'
+    )
+    if (hasAbsoluteChild) {
+      css.position = 'relative'
+    }
+
     // 横向溢出检测：子元素总宽超过容器宽 → 标记 overflow-x: auto（横滑容器）
     if (node.layoutMode === 'HORIZONTAL' && node.absoluteBoundingBox) {
       const parentWidth = node.absoluteBoundingBox.width
@@ -215,7 +223,16 @@ export function convertNodeToCSS(
     (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL') &&
     node.layoutPositioning !== 'ABSOLUTE'
 
-  if (node.constraints && parent && !isInAutoLayoutFlow) {
+  // 处理绝对定位：有 constraints 或 layoutPositioning === 'ABSOLUTE'
+  if (node.layoutPositioning === 'ABSOLUTE' && parent) {
+    css.position = 'absolute'
+    // 从 relativeTransform 计算偏移
+    const transform = node.relativeTransform
+    if (transform && transform.length >= 2) {
+      css.left = `${transform[0][2]}px`
+      css.top = `${transform[1][2]}px`
+    }
+  } else if (node.constraints && parent && !isInAutoLayoutFlow) {
     const constraintStyles = calculateConstraints(node, parent)
     Object.assign(css, constraintStyles)
   }

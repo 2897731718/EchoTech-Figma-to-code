@@ -16,7 +16,7 @@
   },
   "files": [
     "dist",
-    ".claude",
+    ".claude/commands",
     "template",
     "tokens",
     "README.md"

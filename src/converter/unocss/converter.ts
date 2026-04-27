@@ -189,6 +189,36 @@ export function convertCSSToUnoCSS(css: Record<string, string>): {
         }
         break
       }
+
+      case 'position':
+        if (value === 'absolute') { classes.push('absolute'); converted = true }
+        else if (value === 'relative') { classes.push('relative'); converted = true }
+        else if (value === 'fixed') { classes.push('fixed'); converted = true }
+        break
+
+      case 'left': {
+        const match = value.match(/^(-?\d+(?:\.\d+)?)px$/)
+        if (match) { classes.push(`left-[${match[1]}px]`); converted = true }
+        break
+      }
+
+      case 'right': {
+        const match = value.match(/^(-?\d+(?:\.\d+)?)px$/)
+        if (match) { classes.push(`right-[${match[1]}px]`); converted = true }
+        break
+      }
+
+      case 'top': {
+        const match = value.match(/^(-?\d+(?:\.\d+)?)px$/)
+        if (match) { classes.push(`top-[${match[1]}px]`); converted = true }
+        break
+      }
+
+      case 'bottom': {
+        const match = value.match(/^(-?\d+(?:\.\d+)?)px$/)
+        if (match) { classes.push(`bottom-[${match[1]}px]`); converted = true }
+        break
+      }
     }
 
     if (!converted) {
