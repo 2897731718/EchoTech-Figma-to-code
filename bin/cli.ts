@@ -18,6 +18,13 @@ import { execSync } from 'node:child_process'
 import { convertFigmaToCode } from '../src/index'
 import { checkForUpdate, printUpdateBanner, runAutoUpdate } from '../src/version-check'
 import { findProjectReferenceFiles } from '../src/project-references'
+import {
+  CONVENTIONS_RELATIVE_PATH,
+  CONVENTIONS_TEMPLATE_NAME,
+  resolveConventionsPath,
+  validateConventions,
+  calibrate,
+} from '../src/flutter-conventions'
 
 // ── 自动检测项目样式模式 ────────────────────────────────────────────────────
 
@@ -331,8 +338,9 @@ const command = args[0]
 // ── init 子命令 ────────────────────────────────────────────────────────────
 
 if (command === 'init') {
-  // figma-to-code init [--ui=your-ui-lib|custom-flutter] [--skip-check]
+  // figma-to-code init [--ui=your-ui-lib|custom-flutter] [--bind=<path>] [--skip-check]
   const uiLib = args.find(a => a.startsWith('--ui='))?.split('=')[1]
+  const bindPath = args.find(a => a.startsWith('--bind='))?.split('=')[1]
   const skipCheck = args.includes('--skip-check')
 
   // ── 前置条件检测 ────────────────────────────────────────────
@@ -388,8 +396,70 @@ if (command === 'init') {
 
   mkdirSync(commandsDir, { recursive: true })
 
+  // ── custom-flutter 走独立的"规范文件"流程（不复制 figma-context.md / skill / figma-base） ──
+  if (uiLib === 'custom-flutter') {
+    const conventionsDst = resolveConventionsPath(process.cwd())
+    if (existsSync(conventionsDst)) {
+      console.log(`⚠ ${CONVENTIONS_RELATIVE_PATH} 已存在，跳过创建`)
+    } else if (bindPath) {
+      // 分支 1：绑定用户已有的规范文件 → 复制（不软链）到标准位置
+      const bindAbs = resolve(process.cwd(), bindPath)
+      if (!existsSync(bindAbs)) {
+        console.error(`✖ --bind 指定的文件不存在：${bindAbs}`)
+        process.exit(1)
+      }
+      copyFileSync(bindAbs, conventionsDst)
+      console.log(`✔ 已绑定规范文件：${bindPath} → ${CONVENTIONS_RELATIVE_PATH}`)
+    } else {
+      // 分支 2：用Product A默认模板创建
+      const tplSrc = resolve(templateDir, CONVENTIONS_TEMPLATE_NAME)
+      if (!existsSync(tplSrc)) {
+        console.error(`✖ 未找到规范模板：${tplSrc}`)
+        process.exit(1)
+      }
+      copyFileSync(tplSrc, conventionsDst)
+      console.log(`✔ 已创建 ${CONVENTIONS_RELATIVE_PATH}（Product A默认模板）`)
+    }
+
+    // 校验必备章节
+    const v = validateConventions(process.cwd())
+    if (v.missingSections.length > 0) {
+      console.log(`\n⚠ 规范文件缺少以下章节，请手动补齐：`)
+      for (const s of v.missingSections) console.log(`    ${s}`)
+    }
+
+    // ── 自动跑一次 calibrate ──
+    console.log('\n🔍 校准规范文件（扫描项目代码）...')
+    try {
+      const outcome = calibrate({ cwd: process.cwd() })
+      console.log(`  扫描 ${outcome.filesScanned} 个 .dart 文件`)
+      if (outcome.applied.length > 0) {
+        console.log(`  ✔ 已自动填充 ${outcome.applied.length} 项：`)
+        for (const a of outcome.applied) console.log(`    - ${a.field} → ${a.value}`)
+      }
+      if (outcome.remaining.length > 0) {
+        console.log(`  ⚠ 仍有 ${outcome.remaining.length} 项 TODO 需手动填写：`)
+        for (const r of outcome.remaining) console.log(`    - L${r.line}: ${r.field}`)
+      }
+      if (outcome.applied.length > 0) {
+        console.log(`\n  请运行 \`git diff ${CONVENTIONS_RELATIVE_PATH}\` 确认改动`)
+      }
+    } catch (e) {
+      console.error(`  ✖ 校准失败：${(e as Error).message}`)
+    }
+
+    console.log('\n✅ 安装完成！\n')
+    console.log('使用方式：')
+    console.log('  figma-to-code <figma-url> --framework=flutter   生成 Flutter 骨架')
+    console.log(`  figma-to-code calibrate                         重新校准 ${CONVENTIONS_RELATIVE_PATH}`)
+    console.log('')
+    console.log(`组件映射通过远程配置自动加载；翻译规范见 ${CONVENTIONS_RELATIVE_PATH}。`)
+    maybeCheckForUpdate()
+    process.exit(0)
+  }
+
   // 复制 skill 文件（仅 Web 端，Flutter 端不再需要 skill）
-  if (uiLib !== 'custom-flutter') {
+  {
     const skillSrc = resolve(templateDir, 'commands/figma.md')
     const skillDst = resolve(commandsDir, 'figma.md')
     if (existsSync(skillSrc)) {
@@ -426,7 +496,8 @@ if (command === 'init') {
 
   if (!existsSync(contextSrc)) {
     console.error(`✖ 未找到模板：${templateName}`)
-    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-react.md、figma-context-custom-flutter.md`)
+    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-react.md`)
+    console.error(`  Flutter 项目请使用 figma-to-code init --ui=custom-flutter（走独立的规范文件流程）`)
     process.exit(1)
   }
 
@@ -455,17 +526,9 @@ if (command === 'init') {
 
   // ── 完成提示 ────────────────────────────────────────────────
   console.log('\n✅ 安装完成！\n')
-
-  if (uiLib === 'custom-flutter') {
-    console.log('使用方式：')
-    console.log('  figma-to-code <figma-url> --framework=flutter   生成 Flutter 骨架')
-    console.log('')
-    console.log('组件映射通过远程配置自动加载，INSTANCE 节点会标注正确的 Flutter 类名。')
-  } else {
-    console.log('使用方式：')
-    console.log('  /figma <figma-url>               生成代码')
-    console.log('  编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
-  }
+  console.log('使用方式：')
+  console.log('  /figma <figma-url>               生成代码')
+  console.log('  编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
   maybeCheckForUpdate()
   process.exit(0)
 }
@@ -597,6 +660,48 @@ if (command === 'diff') {
   process.exit(0)
 }
 
+// ── calibrate 子命令 ─────────────────────────────────────────────────────
+
+if (command === 'calibrate') {
+  // figma-to-code calibrate [--dry-run]
+  const dryRun = args.includes('--dry-run')
+  const v = validateConventions(process.cwd())
+  if (!v.exists) {
+    console.error(`✖ 未找到规范文件：${CONVENTIONS_RELATIVE_PATH}`)
+    console.error(`  请先运行 figma-to-code init --ui=custom-flutter`)
+    process.exit(1)
+  }
+  if (!v.hasMarker) {
+    console.error(`⚠ 当前 ${CONVENTIONS_RELATIVE_PATH} 缺少 figma-to-code 标记，可能不是合法的规范文件`)
+  }
+  if (v.missingSections.length > 0) {
+    console.error(`⚠ 规范文件缺少章节：${v.missingSections.join('、')}`)
+  }
+
+  console.log(`🔍 校准规范文件${dryRun ? '（dry-run，不写入）' : ''}...`)
+  try {
+    const outcome = calibrate({ cwd: process.cwd(), dryRun })
+    console.log(`  扫描 ${outcome.filesScanned} 个 .dart 文件`)
+    if (outcome.applied.length > 0) {
+      console.log(`  ✔ ${dryRun ? '将填充' : '已填充'} ${outcome.applied.length} 项：`)
+      for (const a of outcome.applied) console.log(`    - ${a.field} → ${a.value}`)
+    } else {
+      console.log('  （无可自动填充字段）')
+    }
+    if (outcome.remaining.length > 0) {
+      console.log(`  ⚠ 仍有 ${outcome.remaining.length} 项需手动填写：`)
+      for (const r of outcome.remaining) console.log(`    - L${r.line}: ${r.field}`)
+    }
+    if (!dryRun && outcome.applied.length > 0) {
+      console.log(`\n  请运行 \`git diff ${CONVENTIONS_RELATIVE_PATH}\` 确认改动`)
+    }
+  } catch (e) {
+    console.error(`✖ ${(e as Error).message}`)
+    process.exit(1)
+  }
+  process.exit(0)
+}
+
 // ── --version / --help ────────────────────────────────────────────────────
 
 if (args.includes('--version') || args.includes('-v')) {
@@ -650,6 +755,8 @@ if (!url) {
   }
   console.log('用法：')
   console.log('  figma-to-code init [--ui=your-ui-lib]          初始化项目 skill 文件')
+  console.log('  figma-to-code init --ui=custom-flutter [--bind=<path>]   初始化 Flutter 规范文件')
+  console.log('  figma-to-code calibrate [--dry-run]        重新校准 .claude/flutter-conventions.md')
   console.log('  figma-to-code update [--ui=your-ui-lib]        更新 figma-base 组件规则（保留项目配置）')
   console.log('  figma-to-code diff [--ui=your-ui-lib]          对比 figma-base 版本')
   console.log('  figma-to-code <figma-url> [选项]           生成骨架并输出到 stdout\n')
@@ -688,6 +795,29 @@ try {
   process.exit(1)
 }
 
+// ── Flutter runtime 检查：规范文件存在性 ──
+let flutterConventionsFile: string | undefined
+if (framework === 'flutter') {
+  const v = validateConventions(process.cwd())
+  if (!v.exists) {
+    console.error(`\n✖ 未找到 Flutter 规范文件：${CONVENTIONS_RELATIVE_PATH}`)
+    console.error('  团队规范要求生成 Flutter 代码必须先建立项目级规范契约。')
+    console.error('  请运行其中之一：')
+    console.error('    figma-to-code init --ui=custom-flutter                    # 创建Product A默认模板')
+    console.error('    figma-to-code init --ui=custom-flutter --bind=<your.md>   # 绑定已有规范文件')
+    process.exit(1)
+  }
+  flutterConventionsFile = CONVENTIONS_RELATIVE_PATH
+  if (v.missingSections.length > 0) {
+    console.error(`[figma-to-code] ⚠ 规范文件缺少章节：${v.missingSections.join('、')}`)
+  }
+  if (v.pendingTodos.length > 0) {
+    console.error(`[figma-to-code] ⚠ 规范文件仍有 ${v.pendingTodos.length} 项 TODO 占位未填写：`)
+    for (const t of v.pendingTodos) console.error(`    L${t.line}: ${t.context}`)
+    console.error(`[figma-to-code]   建议运行 figma-to-code calibrate 自动填充，或手动编辑后保存`)
+  }
+}
+
 try {
   const projectReferenceFiles = framework === 'flutter' ? findProjectReferenceFiles() : undefined
   const result = await convertFigmaToCode({
@@ -697,6 +827,7 @@ try {
     styleFormat,
     preloadedTokenMap,
     projectReferenceFiles,
+    flutterConventionsFile,
   })
 
   // 子组件列表输出到 stderr，供用户终端查看

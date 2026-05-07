@@ -28,6 +28,8 @@ export interface ConvertOptions {
   preloadedTokenMap?: Map<string, string>
   /** 当前项目可供 IDE AI 参考的 .md 路径（CLI 侧扫描传入，用于未映射组件提示） */
   projectReferenceFiles?: string[]
+  /** Flutter 规范文件相对路径（如 .claude/flutter-conventions.md），生成器头部会引用 */
+  flutterConventionsFile?: string
 }
 
 export interface InstanceComponent {
@@ -317,7 +319,10 @@ export async function convertFigmaToCode(
   const styleFormat = options.styleFormat ?? 'css'
 
   const generator = createGenerator(framework, {
-    flutter: { projectReferenceFiles: options.projectReferenceFiles }
+    flutter: {
+      projectReferenceFiles: options.projectReferenceFiles,
+      conventionsFile: options.flutterConventionsFile,
+    }
   })
   const styleConverter = createStyleConverter(styleFormat)
 
