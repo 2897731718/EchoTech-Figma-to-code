@@ -1,4 +1,4 @@
-<!-- figma-to-code: flutter-conventions v1 -->
+<!-- figma-to-code: flutter-conventions v2 -->
 # 项目 Figma 规范 — Flutter (Custom/Echo)
 
 > 复制此文件到项目 `.claude/figma-context.md`，按注释填写项目信息。

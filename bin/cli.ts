@@ -23,6 +23,7 @@ import { findProjectReferenceFiles } from '../src/project-references'
 import {
   CONVENTIONS_RELATIVE_PATH,
   CONVENTIONS_TEMPLATE_NAME,
+  CURRENT_MARKER_VERSION,
   resolveConventionsPath,
   validateConventions,
   calibrate,
@@ -878,6 +879,14 @@ if (framework === 'flutter') {
     process.exit(1)
   }
   flutterConventionsFile = CONVENTIONS_RELATIVE_PATH
+  if (v.isOutdated) {
+    console.error('')
+    console.error(`[figma-to-code] ⚠ 规范文件版本过期 (${v.markerVersion} → 最新 ${CURRENT_MARKER_VERSION})`)
+    console.error(`[figma-to-code]   团队Product A模板已更新，旧版本内容（如错误的命名空间）会让 AI 翻译跑偏。`)
+    console.error(`[figma-to-code]   建议升级：figma-to-code init --ui=custom-flutter --force`)
+    console.error(`[figma-to-code]   （会覆盖 ${CONVENTIONS_RELATIVE_PATH}，覆盖前请 git commit 当前内容）`)
+    console.error('')
+  }
   if (v.missingSections.length > 0) {
     console.error(`[figma-to-code] ⚠ 规范文件缺少章节：${v.missingSections.join('、')}`)
   }
