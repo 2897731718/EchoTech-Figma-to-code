@@ -15,6 +15,8 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSyn
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
+import { createInterface } from 'node:readline/promises'
+import { stdin, stdout } from 'node:process'
 import { convertFigmaToCode } from '../src/index'
 import { checkForUpdate, printUpdateBanner, runAutoUpdate } from '../src/version-check'
 import { findProjectReferenceFiles } from '../src/project-references'
@@ -337,10 +339,35 @@ const command = args[0]
 
 // ── init 子命令 ────────────────────────────────────────────────────────────
 
+// ── 交互式 prompt 工具（仅 TTY 下使用） ──────────────────────────────────────
+async function promptYesNo(question: string, defaultYes = false): Promise<boolean> {
+  if (!stdin.isTTY) return defaultYes
+  const rl = createInterface({ input: stdin, output: stdout })
+  try {
+    const ans = (await rl.question(`${question} ${defaultYes ? '[Y/n]' : '[y/N]'}: `)).trim().toLowerCase()
+    if (ans === '') return defaultYes
+    return ans === 'y' || ans === 'yes'
+  } finally {
+    rl.close()
+  }
+}
+
+async function promptText(question: string): Promise<string> {
+  if (!stdin.isTTY) return ''
+  const rl = createInterface({ input: stdin, output: stdout })
+  try {
+    return (await rl.question(`${question}: `)).trim()
+  } finally {
+    rl.close()
+  }
+}
+
 if (command === 'init') {
-  // figma-to-code init [--ui=your-ui-lib|custom-flutter] [--bind=<path>] [--skip-check]
+  // figma-to-code init [--ui=your-ui-lib|custom-flutter] [--bind=<path>] [--force] [--use-default] [--skip-check]
   const uiLib = args.find(a => a.startsWith('--ui='))?.split('=')[1]
   const bindPath = args.find(a => a.startsWith('--bind='))?.split('=')[1]
+  const force = args.includes('--force')
+  const useDefault = args.includes('--use-default')
   const skipCheck = args.includes('--skip-check')
 
   // ── 前置条件检测 ────────────────────────────────────────────
@@ -399,36 +426,74 @@ if (command === 'init') {
   // ── custom-flutter 走独立的"规范文件"流程（不复制 figma-context.md / skill / figma-base） ──
   if (uiLib === 'custom-flutter') {
     const conventionsDst = resolveConventionsPath(process.cwd())
+
+    // 1) 文件已存在 → 决定是否覆盖
     if (existsSync(conventionsDst)) {
-      console.log(`⚠ ${CONVENTIONS_RELATIVE_PATH} 已存在，跳过创建`)
-    } else if (bindPath) {
-      // 分支 1：绑定用户已有的规范文件 → 复制（不软链）到标准位置
-      const bindAbs = resolve(process.cwd(), bindPath)
+      let shouldOverwrite = force
+      if (!shouldOverwrite) {
+        if (!stdin.isTTY) {
+          console.log(`⚠ ${CONVENTIONS_RELATIVE_PATH} 已存在，跳过创建`)
+          console.log('  如需覆盖（适用于升级老版本规范）：figma-to-code init --ui=custom-flutter --force')
+          maybeCheckForUpdate()
+          process.exit(0)
+        }
+        console.log(`⚠ ${CONVENTIONS_RELATIVE_PATH} 已存在`)
+        console.log('  覆盖会丢失任何手动编辑（建议先 git commit 当前内容）')
+        shouldOverwrite = await promptYesNo('  覆盖现有规范文件？', false)
+        if (!shouldOverwrite) {
+          console.log('  已取消，未做修改')
+          maybeCheckForUpdate()
+          process.exit(0)
+        }
+      }
+    }
+
+    // 2) 决定规范来源：--bind > --use-default > 交互式询问 > 默认Product A
+    let source: 'bind' | 'default' = 'default'
+    let resolvedBind = bindPath
+    if (bindPath) {
+      source = 'bind'
+    } else if (!useDefault && stdin.isTTY) {
+      // 交互式：问用户有没有自己的规范文件
+      const hasOwn = await promptYesNo('  你的项目是否已有 UI 代码规范文件 (.md)？', false)
+      if (hasOwn) {
+        const p = await promptText('  请输入规范文件相对/绝对路径')
+        if (p) {
+          resolvedBind = p
+          source = 'bind'
+        } else {
+          console.log('  路径为空，改用Product A默认模板')
+        }
+      }
+    }
+
+    // 3) 写入规范文件
+    if (source === 'bind' && resolvedBind) {
+      const bindAbs = resolve(process.cwd(), resolvedBind)
       if (!existsSync(bindAbs)) {
-        console.error(`✖ --bind 指定的文件不存在：${bindAbs}`)
+        console.error(`✖ 指定的规范文件不存在：${bindAbs}`)
         process.exit(1)
       }
       copyFileSync(bindAbs, conventionsDst)
-      console.log(`✔ 已绑定规范文件：${bindPath} → ${CONVENTIONS_RELATIVE_PATH}`)
+      console.log(`✔ 已绑定规范文件：${resolvedBind} → ${CONVENTIONS_RELATIVE_PATH}`)
     } else {
-      // 分支 2：用Product A默认模板创建
       const tplSrc = resolve(templateDir, CONVENTIONS_TEMPLATE_NAME)
       if (!existsSync(tplSrc)) {
         console.error(`✖ 未找到规范模板：${tplSrc}`)
         process.exit(1)
       }
       copyFileSync(tplSrc, conventionsDst)
-      console.log(`✔ 已创建 ${CONVENTIONS_RELATIVE_PATH}（Product A默认模板）`)
+      console.log(`✔ 已写入 ${CONVENTIONS_RELATIVE_PATH}（Product A默认模板）`)
     }
 
-    // 校验必备章节
+    // 4) 校验必备章节（仅警告，不阻断）
     const v = validateConventions(process.cwd())
     if (v.missingSections.length > 0) {
       console.log(`\n⚠ 规范文件缺少以下章节，请手动补齐：`)
       for (const s of v.missingSections) console.log(`    ${s}`)
     }
 
-    // ── 自动跑一次 calibrate ──
+    // 5) 自动跑一次 calibrate
     console.log('\n🔍 校准规范文件（扫描项目代码）...')
     try {
       const outcome = calibrate({ cwd: process.cwd() })
@@ -452,6 +517,7 @@ if (command === 'init') {
     console.log('使用方式：')
     console.log('  figma-to-code <figma-url> --framework=flutter   生成 Flutter 骨架')
     console.log(`  figma-to-code calibrate                         重新校准 ${CONVENTIONS_RELATIVE_PATH}`)
+    console.log(`  figma-to-code init --ui=custom-flutter --force    覆盖现有规范文件（用于升级老版本）`)
     console.log('')
     console.log(`组件映射通过远程配置自动加载；翻译规范见 ${CONVENTIONS_RELATIVE_PATH}。`)
     maybeCheckForUpdate()
@@ -755,7 +821,11 @@ if (!url) {
   }
   console.log('用法：')
   console.log('  figma-to-code init [--ui=your-ui-lib]          初始化项目 skill 文件')
-  console.log('  figma-to-code init --ui=custom-flutter [--bind=<path>]   初始化 Flutter 规范文件')
+  console.log('  figma-to-code init --ui=custom-flutter [--bind=<path>] [--force] [--use-default]')
+  console.log('                                              初始化 Flutter 规范文件（交互式询问）')
+  console.log('                                              --bind=<path>  绑定已有规范文件')
+  console.log('                                              --use-default  非交互，直接用Product A默认模板')
+  console.log('                                              --force        覆盖已存在的规范文件（升级老版本时用）')
   console.log('  figma-to-code calibrate [--dry-run]        重新校准 .claude/flutter-conventions.md')
   console.log('  figma-to-code update [--ui=your-ui-lib]        更新 figma-base 组件规则（保留项目配置）')
   console.log('  figma-to-code diff [--ui=your-ui-lib]          对比 figma-base 版本')
