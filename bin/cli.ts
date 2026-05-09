@@ -800,20 +800,57 @@ if (framework === 'flutter') {
 }
 
 // Token 映射：支持 product-a/product-b/product-c/product-d，默认 product-a
+//
+// JSON 支持两种 schema(并存,按 entry 自动识别):
+//   旧:  { "VariableID:xxx": "--bg-1" }                       —— 仅正向(boundVariables 命中时用)
+//   新:  { "VariableID:xxx": { "name": "--bg-1", "value": "#f7f7f9" } }
+//                                                              —— 正向 + 反向(设计稿没绑变量时按 hex 反查)
+// 反向条目以 "#rrggbb"(小写)为键塞进同一个 Map,与 "VariableID:" 键不会撞;
+// 同 hex 多 token 时,最后一条覆盖。
 const tokensArg = args.find(a => a.startsWith('--tokens='))?.split('=')[1] ?? 'product-a'
 let preloadedTokenMap: Map<string, string> | undefined
 const __dir = dirname(fileURLToPath(import.meta.url))
 const tokenFilePath = resolve(__dir, `../../tokens/${tokensArg}.json`)
 if (existsSync(tokenFilePath)) {
   try {
-    const tokenData = JSON.parse(readFileSync(tokenFilePath, 'utf-8')) as Record<string, string>
-    preloadedTokenMap = new Map(Object.entries(tokenData))
-    console.error(`[figma-to-code] 加载 ${tokensArg} token 映射: ${preloadedTokenMap.size} 个`)
+    const tokenData = JSON.parse(readFileSync(tokenFilePath, 'utf-8')) as Record<string, string | { name: string; value?: string }>
+    preloadedTokenMap = new Map()
+    let forwardCount = 0
+    let reverseCount = 0
+    for (const [id, entry] of Object.entries(tokenData)) {
+      if (typeof entry === 'string') {
+        preloadedTokenMap.set(id, entry)
+        forwardCount++
+      } else if (entry && typeof entry === 'object' && entry.name) {
+        preloadedTokenMap.set(id, entry.name)
+        forwardCount++
+        if (entry.value) {
+          const norm = normalizeHexKey(entry.value)
+          if (norm) {
+            preloadedTokenMap.set(norm, entry.name)
+            reverseCount++
+          }
+        }
+      }
+    }
+    const reverseLabel = reverseCount > 0 ? ` (含 ${reverseCount} 条 hex 反向)` : ''
+    console.error(`[figma-to-code] 加载 ${tokensArg} token 映射: ${forwardCount} 个${reverseLabel}`)
   } catch {
     console.error(`[figma-to-code] 加载 token 映射失败: ${tokenFilePath}`)
   }
 } else if (tokensArg !== 'none') {
   console.error(`[figma-to-code] token 映射文件不存在: ${tokenFilePath}，使用原始色值`)
+}
+
+/** "#fff" / "#FFFFFF" / "#ffffffff" → "#rrggbb"(小写,8 位含 alpha 不参与反查) */
+function normalizeHexKey(hex: string): string | null {
+  const m = hex.trim().match(/^#([0-9a-fA-F]+)$/)
+  if (!m) return null
+  let h = m[1].toLowerCase()
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  if (h.length === 6) return `#${h}`
+  // 8 位带 alpha 的 token 比较少见;有需要再扩
+  return null
 }
 
 if (!url) {

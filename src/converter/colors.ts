@@ -36,9 +36,16 @@ export function convertPaintToColor(paint: Paint, variableMap?: VariableMap): st
     const opacity = paint.opacity ?? paint.color.a ?? 1
     const rawColor = opacity === 1 ? rgbToHex(r, g, b) : rgbToRgba(r, g, b, opacity)
 
-    // 优先使用绑定的 Variable，带 fallback 原始色值（格式同 Figma CSS 面板：var(--text-1, #000)）
+    // ① 优先用绑定的 Variable
     if (variableMap && paint.boundVariables?.color) {
       const varName = variableMap.get(paint.boundVariables.color.id)
+      if (varName) return `var(${varName},${rawColor})`
+    }
+
+    // ② 兜底:hex 反向匹配(设计稿没绑变量但色值正好对得上 token 时,仍可 token 化)
+    //    仅对全不透明色(opacity === 1)反查;rgbToHex 输出小写 6 位与 cli 入库的 hex key 同源。
+    if (variableMap && opacity === 1) {
+      const varName = variableMap.get(rawColor)
       if (varName) return `var(${varName},${rawColor})`
     }
 

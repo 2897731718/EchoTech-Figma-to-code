@@ -112,6 +112,17 @@ describe('Code Generators', () => {
       expect(code).toContain('Color(0xFFFF5500)')
     })
 
+    it('converts var(--token, fallback) to AppColor.qd.<token>', () => {
+      const tree: ComponentNode = {
+        tag: 'div',
+        style: { 'background-color': 'var(--bg-1, #f7f7f9)' },
+        children: []
+      }
+      const code = new FlutterGenerator().generate(tree, {})
+      expect(code).toContain('AppColor.qd.bg_1')
+      expect(code).not.toContain('Color(0xFFF7F7F9)')
+    })
+
     it('should convert rgba colors', () => {
       const tree: ComponentNode = {
         tag: 'span',

@@ -30,7 +30,12 @@ const TOKEN_FILES = {
 }
 
 /**
- * 递归提取 variableId → tokenName 映射
+ * 递归提取 variableId → { name, value } 映射
+ *
+ * 输出 schema:
+ *   { "VariableID:xxx": { "name": "--bg-1", "value": "#f7f7f9" } }
+ *
+ * 颜色 token 才会带 value(用于 colors.ts 的 hex 反向匹配);非颜色 token 仅 name。
  */
 function extractVariableMap(obj, prefix = '') {
   const map = {}
@@ -46,7 +51,11 @@ function extractVariableMap(obj, prefix = '') {
       if (variableId) {
         // 转换为 CSS 变量名：text/1 → --text-1
         const cssVarName = `--${tokenPath.replace(/\//g, '-').toLowerCase()}`
-        map[variableId] = cssVarName
+        const entry = { name: cssVarName }
+        // 颜色 token($type === 'color',$value 是 #rrggbb 字符串)带值,供反向匹配
+        const hex = extractHexValue(value)
+        if (hex) entry.value = hex
+        map[variableId] = entry
       }
 
       // 递归处理子对象
@@ -56,6 +65,17 @@ function extractVariableMap(obj, prefix = '') {
   }
 
   return map
+}
+
+/** 从 token 节点抽取颜色字符串。仅在 $type 是 color 且 $value 形如 #rrggbb 时返回。 */
+function extractHexValue(node) {
+  const type = node.$type
+  const val = node.$value
+  if (type !== 'color' || typeof val !== 'string') return null
+  // Figma DTCG 输出常见为 "#RRGGBB" 或 "#RRGGBBAA";reference 形式 "{path}" 不参与反查
+  const m = val.trim().match(/^#([0-9a-fA-F]{6,8})$/)
+  if (!m) return null
+  return `#${m[1].slice(0, 6).toLowerCase()}`
 }
 
 /**
