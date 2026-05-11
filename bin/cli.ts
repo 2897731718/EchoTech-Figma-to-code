@@ -12,12 +12,12 @@
  */
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execSync } from 'node:child_process'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { convertFigmaToCode } from '../src/index'
+import { convertFigmaToCode, FigmaAPIClient, readFigmaPAT } from '../src/index'
 import { checkForUpdate, printUpdateBanner, runAutoUpdate } from '../src/version-check'
 import { findProjectReferenceFiles } from '../src/project-references'
 import {
@@ -872,6 +872,8 @@ if (!url) {
   console.log('  --framework=vue|html|react|flutter   输出框架，默认 vue')
   console.log('  --style=auto|unocss|css|inline       样式格式，默认 auto（自动检测，flutter 时自动忽略）')
   console.log('  --tokens=product-a|product-b|product-c|product-d  token 映射，默认 product-a')
+  console.log('  --image                              （仅 flutter）额外导出节点渲染图到 .figma-to-code/，')
+  console.log('                                       骨架头部会要求 IDE AI 读图对账还原度（改老页面尤其有用）')
   console.log('  --skip-version-check                 跳过远程版本检查（或设 FIGMA_TO_CODE_SKIP_VERSION_CHECK=1）')
   console.log('  --help, -h                   显示帮助信息')
   console.log('  --version, -v                显示版本号')
@@ -934,6 +936,39 @@ if (framework === 'flutter') {
   }
 }
 
+// ── --image：导出节点渲染图（仅 Flutter）──
+const wantImage = args.includes('--image')
+let sharedClient: FigmaAPIClient | undefined
+let flutterReferenceImage: string | undefined
+if (wantImage) {
+  if (framework !== 'flutter') {
+    console.error('[figma-to-code] --image 目前仅对 --framework=flutter 生效，已忽略')
+  } else if (!nodeId) {
+    console.error('[figma-to-code] --image 需要 URL 带 node-id 才能定位要渲染的节点，已跳过')
+  } else {
+    try {
+      sharedClient = new FigmaAPIClient(await readFigmaPAT())
+      const imgRes = await sharedClient.getImages(fileKey, [nodeId], { format: 'png', scale: 2 })
+      const imgUrl = imgRes.images[nodeId]
+      if (!imgUrl) {
+        console.error(`[figma-to-code] ⚠ 渲染图导出失败（images API 未返回 URL${imgRes.err ? `：${imgRes.err}` : ''}），跳过`)
+      } else {
+        const resp = await fetch(imgUrl)
+        if (!resp.ok) throw new Error(`下载渲染图失败 HTTP ${resp.status}`)
+        const buf = Buffer.from(await resp.arrayBuffer())
+        const dir = resolve(process.cwd(), '.figma-to-code')
+        mkdirSync(dir, { recursive: true })
+        const filePath = join(dir, `${nodeId.replace(/:/g, '-')}.png`)
+        writeFileSync(filePath, buf)
+        flutterReferenceImage = relative(process.cwd(), filePath)
+        console.error(`[figma-to-code] 参考截图已保存: ${flutterReferenceImage} (${(buf.length / 1024).toFixed(0)} KB)`)
+      }
+    } catch (e) {
+      console.error(`[figma-to-code] ⚠ 渲染图导出失败：${(e as Error).message?.slice(0, 100)}，跳过（不影响骨架生成）`)
+    }
+  }
+}
+
 try {
   const projectReferenceFiles = framework === 'flutter' ? findProjectReferenceFiles() : undefined
   const result = await convertFigmaToCode({
@@ -944,6 +979,8 @@ try {
     preloadedTokenMap,
     projectReferenceFiles,
     flutterConventionsFile,
+    flutterReferenceImage,
+    client: sharedClient,
   })
 
   // 子组件列表输出到 stderr，供用户终端查看

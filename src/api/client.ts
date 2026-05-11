@@ -1,6 +1,7 @@
 import type {
   ComponentsResponse,
   FileResponse,
+  ImagesResponse,
   MeResponse,
   StylesResponse,
   VariablesResponse
@@ -124,6 +125,22 @@ export class FigmaAPIClient {
 
   async getVariables(fileKey: string): Promise<VariablesResponse> {
     return this.request<VariablesResponse>(`/files/${fileKey}/variables/local`)
+  }
+
+  /**
+   * 渲染指定节点为图片，返回 nodeId → presigned URL 的映射。
+   * 拿到 URL 后需再 fetch 一次取二进制（URL 无需鉴权，短期有效）。
+   */
+  async getImages(
+    fileKey: string,
+    nodeIds: string[],
+    options?: { format?: 'png' | 'jpg' | 'svg' | 'pdf'; scale?: number }
+  ): Promise<ImagesResponse> {
+    const params = new URLSearchParams()
+    params.append('ids', nodeIds.join(','))
+    params.append('format', options?.format ?? 'png')
+    if (options?.scale !== undefined) params.append('scale', String(options.scale))
+    return this.request<ImagesResponse>(`/images/${fileKey}?${params.toString()}`)
   }
 
   async getMe(): Promise<MeResponse> {

@@ -281,3 +281,10 @@ export interface MeResponse {
   img_url: string
   handle: string
 }
+
+export interface ImagesResponse {
+  /** 渲染失败时为错误信息，成功为 null */
+  err: string | null
+  /** nodeId → 渲染图 URL（presigned，短期有效）；该节点渲染失败时为 null */
+  images: Record<string, string | null>
+}
