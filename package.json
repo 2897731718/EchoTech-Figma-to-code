@@ -1,6 +1,6 @@
 {
   "name": "figma-to-code",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Convert Figma designs to code using REST API with PAT authentication",
   "type": "module",
   "main": "dist/src/index.js",
