@@ -62,6 +62,7 @@ Figma REST API → raw node tree → simplifyNode() (denoise) → buildComponent
 ## Skills (slash commands)
 
 - `/figma <url> [path]` — Generate Vue component from Figma link (calls CLI → reads context → translates)
+- `/figma-flutter <url> [path]` — Generate Flutter widget from Figma link (calls CLI with `--framework=flutter --image` → reads `.claude/flutter-conventions.md` + reference screenshot → translates → runs review checklist). Distributed by `init --ui=custom-flutter`.
 - `/figma-init` — Scan project to auto-generate `.claude/figma-context.md`
 - `/publish [patch|minor|major] [beta]` — Publish to GitLab registry
 

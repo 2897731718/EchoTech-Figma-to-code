@@ -514,11 +514,27 @@ if (command === 'init') {
       console.error(`  ✖ 校准失败：${(e as Error).message}`)
     }
 
+    // 6) 复制 /figma-flutter slash command
+    {
+      const skillSrc = resolve(templateDir, 'commands/figma-flutter.md')
+      const skillDst = resolve(commandsDir, 'figma-flutter.md')
+      if (existsSync(skillSrc)) {
+        const existed = existsSync(skillDst)
+        if (existed && !force) {
+          console.log('⚠ .claude/commands/figma-flutter.md 已存在，跳过（升级用 --force 覆盖）')
+        } else {
+          copyFileSync(skillSrc, skillDst)
+          console.log(`${existed ? '✔ 已更新' : '✔ 已创建'} .claude/commands/figma-flutter.md`)
+        }
+      }
+    }
+
     console.log('\n✅ 安装完成！\n')
     console.log('使用方式：')
-    console.log('  figma-to-code <figma-url> --framework=flutter   生成 Flutter 骨架')
+    console.log('  /figma-flutter <figma-url>                      生成 Flutter Widget（推荐，会读规范+截图对账）')
+    console.log('  figma-to-code <figma-url> --framework=flutter --image   只生成骨架+参考截图')
     console.log(`  figma-to-code calibrate                         重新校准 ${CONVENTIONS_RELATIVE_PATH}`)
-    console.log(`  figma-to-code init --ui=custom-flutter --force    覆盖现有规范文件（用于升级老版本）`)
+    console.log(`  figma-to-code init --ui=custom-flutter --force    覆盖现有规范文件 + skill（升级老版本时用）`)
     console.log('')
     console.log(`组件映射通过远程配置自动加载；翻译规范见 ${CONVENTIONS_RELATIVE_PATH}。`)
     maybeCheckForUpdate()
