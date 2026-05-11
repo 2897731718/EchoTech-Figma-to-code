@@ -30,6 +30,8 @@ export interface ConvertOptions {
   projectReferenceFiles?: string[]
   /** Flutter 规范文件相对路径（如 .claude/flutter-conventions.md），生成器头部会引用 */
   flutterConventionsFile?: string
+  /** Flutter 专用：节点渲染图的相对路径（CLI 侧已下载），生成器头部会要求 IDE AI 读图对账 */
+  flutterReferenceImage?: string
 }
 
 export interface InstanceComponent {
@@ -322,6 +324,7 @@ export async function convertFigmaToCode(
     flutter: {
       projectReferenceFiles: options.projectReferenceFiles,
       conventionsFile: options.flutterConventionsFile,
+      referenceImagePath: options.flutterReferenceImage,
     }
   })
   const styleConverter = createStyleConverter(styleFormat)
