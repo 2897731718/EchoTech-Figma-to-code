@@ -12,6 +12,7 @@ import { convertPaintToColor, type VariableMap } from './colors'
 import type { Framework, StyleFormat, ComponentNode } from './generators/types'
 import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
+import { setHexToTokenMap } from './unocss/mappings'
 import { buildComponentTree, simplifyNode, parseI18nKey, detectBaseComponentPrefixes, todoIconNames } from './tree-builder'
 import type { InstanceFoldingOptions } from './tree-builder'
 import { loadAnnotationMap, buildComponentClassNameMap, type AnnotationPlatform } from './annotation'
@@ -324,6 +325,12 @@ export async function convertFigmaToCode(
       conventionsFile: options.flutterConventionsFile,
     }
   })
+
+  // 设置 hex→token 映射（用于 UnoCSS 颜色转换）
+  if (options.preloadedTokenMap) {
+    setHexToTokenMap(options.preloadedTokenMap)
+  }
+
   const styleConverter = createStyleConverter(styleFormat)
 
   // 构建 Variable ID → CSS 变量名映射（失败时静默降级）

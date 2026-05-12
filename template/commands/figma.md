@@ -40,17 +40,15 @@ npx figma-to-code $URL --framework=vue --tokens=product-a
 1. 检查 `.claude/figma-context.md` 是否存在，不存在则告知用户运行 `figma-to-code init`
 
 2. 如果存在 `.claude/figma-base/` 目录（新版按需加载模式）：
-   - 读取 `.claude/figma-context.md` — 项目定制（业务组件映射、Token）
+   - 读取 `.claude/figma-context.md` — 项目定制（业务组件映射、文字样式 Token）
    - 读取 `.claude/figma-base/core.md` — 核心翻译原则
    - **解析第一步生成的骨架代码**，提取其中出现的组件标签（如 `<Button>`、`<DuInput>`）
    - 读取 `.claude/figma-base/index.json`，根据组件标签查找对应的规则文件
    - **只读取用到的组件规则**：`.claude/figma-base/components/*.md`
    - 读取 `.claude/figma-base/layout.md` — 布局模式规则
-   - 可选读取 `.claude/project-tokens.md` — 项目 token 列表
 
 3. 如果不存在 `figma-base/` 目录（旧版完整模式）：
    - 读取 `.claude/figma-context.md` — 完整的组件映射和样式规范
-   - 可选读取 `.claude/project-tokens.md` — 项目 token 列表
 
 **组件规则按需加载示例**：
 - 骨架中出现 `<Button>` → 读取 `components/button.md`
@@ -63,16 +61,19 @@ npx figma-to-code $URL --framework=vue --tokens=product-a
 对照 `figma-context.md` 中的规范：
 
 - INSTANCE 标签 → 映射为项目真实组件
-- 原始颜色/尺寸 → 替换为项目 token
 - 容器宽度 → 改为 `w-full`（unocss 模式）或 `width: 100%`（css/inline 模式）
 - 静态文字 → 改为 `{{ variable }}`，交互元素加 `@click` / `v-model` 占位
 - `<script setup>` 中补充对应变量、方法，以及按 `figma-context.md` 的「组件引入」规则添加 import
 
-**Token 匹配规则**（针对骨架中的 `var(--xxx, #fallback)` 格式）：
+**颜色 Token 处理**：
 
-1. 如果 `project-tokens.md` 存在且 `--xxx` 在列表中 → 保留 `var(--xxx)` 或转为项目预设类名
-2. 如果 `--xxx` 不在列表中 → 使用 fallback 值（如 `#ffffff`）
-3. 如果 `project-tokens.md` 不存在 → 使用 fallback 值
+骨架已输出 `var(--token-name, #fallback)` 格式，**直接保留即可**：
+- 项目有 CSS 变量 → 自动使用 token
+- 项目没有 CSS 变量 → 自动 fallback 到原始颜色值
+
+**文字样式处理**：
+
+骨架输出原始 CSS 值（如 `text-[14px] font-[500]`），按 `figma-context.md` 的文字样式映射表转换为项目 shortcuts（如 `text-h5`）。
 
 **布局语义修正**（骨架可能未能完整提取，翻译时按视觉结构判断）：
 
@@ -112,9 +113,9 @@ npx figma-to-code $URL --framework=vue --tokens=product-a
    > 发现未识别的子组件 `<ComponentName>`（figma-node: xxx），是否需要生成对应文件？如需要，请告知保存路径（如 `src/components/ComponentName.vue`）。
 
 2. **用户确认路径后**：
-   - 用该组件的 `figma-node` id 重新执行 CLI：
+   - 用该组件的 `figma-node` id 重新执行 CLI（保持与主组件相同的 `--tokens` 参数）：
      ```bash
-     npx figma-to-code <原始fileKey对应的url>&node-id=<componentId> --framework=vue
+     npx figma-to-code <原始fileKey对应的url>&node-id=<componentId> --framework=vue --tokens=<同上>
      ```
    - 对新骨架重复第三步的翻译流程
    - 将结果写入用户指定路径

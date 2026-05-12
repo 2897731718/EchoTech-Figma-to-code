@@ -42,38 +42,43 @@ import { UiButton, UiInput } from 'your-ui-lib'
 
 ## UnoCSS / Tailwind 配置
 
-<!-- 填写间距单位。标准 Tailwind 是 1unit=4px，如果项目自定义了请修改 -->
-**间距单位**：1unit = 4px（标准 Tailwind）
+<!-- ⚠ 重要：根据项目实际配置选择单位写法 -->
 
-<!-- 骨架换算示例：
-  标准 Tailwind（1unit = 4px）：骨架输出即可直接用
-  自定义（1unit = 1px）：骨架 gap-2（=8px）→ 项目写 gap-8
--->
+**间距单位**：（请根据 uno.config.ts / tailwind.config.js 确认）
+
+### 写法一：保留 px 后缀（presetUno 默认配置）
+- 骨架 `gap-[8px]` → 项目写 `gap-8px` 或保留 `gap-[8px]`
+- 骨架 `w-[100px]` → 项目写 `w-100px`
+
+### 写法二：标准 Tailwind（1unit = 4px）
+- 骨架 `gap-[8px]` → 项目写 `gap-2`（8 / 4 = 2）
+- 骨架 `w-[100px]` → 项目写 `w-25`（100 / 4 = 25）
+
+### 写法三：自定义 1unit = 1px
+- 骨架 `gap-[8px]` → 项目写 `gap-8`
+- 骨架 `w-[100px]` → 项目写 `w-100`
 
 ---
 
 ## 设计 Token
 
-### 文字样式
-
-<!-- 填写项目的文字 token，骨架会输出原始 CSS，转换为项目 token -->
-
-| 骨架输出 | 项目 token |
-|---|---|
-| `text-base font-medium` | `text-base font-medium` |
-| `text-sm` | `text-sm` |
-| `text-xs` | `text-xs` |
-
-<!-- 继续添加 -->
-
 ### 颜色 Token
 
-<!-- 填写颜色 token 映射，骨架会输出原始值 -->
+骨架已输出 `var(--token-name, #fallback)` 格式，可直接使用。
+
+- 项目有对应 CSS 变量 → 自动使用 `var(--token-name)`
+- 项目没有对应变量 → 自动 fallback 到原始颜色值
+
+**无需手动维护颜色映射表。**
+
+### 文字样式
+
+<!-- 填写项目的文字 token，骨架会输出原始 CSS，翻译时转换为项目 token -->
 
 | 骨架输出 | 项目 token |
 |---|---|
-| `text-[rgba(0,0,0,0.64)]` | `text-gray-600` |
-| `text-[#999]` | `text-gray-400` |
-| `bg-[#F7F7F9]` | `bg-gray-100` |
+| `text-[16px] font-[500]` | `text-base font-medium` |
+| `text-[14px] font-[400]` | `text-sm` |
+| `text-[12px] font-[400]` | `text-xs` |
 
 <!-- 继续添加 -->

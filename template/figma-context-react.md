@@ -49,35 +49,35 @@ import { Button, Input, Icon, Select, Divider } from '@your-ui/react'
 **间距单位**：1unit = 4px
 
 <!-- 骨架换算示例（根据实际单位调整）：
-  骨架 gap-2（=8px）→ Tailwind gap-2
-  骨架 px-4（=16px）→ Tailwind px-4
+  骨架 gap-[8px] → Tailwind gap-2
+  骨架 px-[16px] → Tailwind px-4
   如果项目 1unit = 1px：
-  骨架 gap-2（=8px）→ 项目写 gap-8
+  骨架 gap-[8px] → 项目写 gap-8
 -->
 
 ---
 
 ## 设计 Token
 
-### 文字样式
-
-<!-- 填写项目的文字 token，骨架会输出原始 CSS，转换为项目 token -->
-
-| 骨架输出 | 项目 className |
-|---|---|
-| `text-[18px] font-medium` | `text-lg font-medium` |
-| `text-base font-medium` / `text-[16px] font-medium` | `text-base font-medium` |
-| `text-base font-normal` / `text-[16px]` | `text-base` |
-| `text-sm font-normal` / `text-[14px]` | `text-sm` |
-| `text-[12px]` | `text-xs` |
-
 ### 颜色 Token
 
-<!-- 填写颜色 token 映射，骨架会输出原始值 -->
+骨架已输出 `var(--token-name, #fallback)` 格式，可直接使用。
+
+- 项目有对应 CSS 变量 → 自动使用 `var(--token-name)`
+- 项目没有对应变量 → 自动 fallback 到原始颜色值
+
+**无需手动维护颜色映射表。**
+
+### 文字样式
+
+<!-- 填写项目的文字 token，骨架会输出原始 CSS，翻译时转换为项目 className -->
 
 | 骨架输出 | 项目 className |
 |---|---|
-| `text-[rgba(0,0,0,0.64)]` | `text-gray-600` |
-| `text-[rgba(0,0,0,0.4)]` / `text-[#999]` | `text-gray-400` |
-| `bg-[#F7F7F9]` / `bg-[#f5f5f5]` | `bg-gray-100` |
-| `text-black` / `text-[#000]` | `text-gray-900` |
+| `text-[18px] font-[500]` | `text-lg font-medium` |
+| `text-[16px] font-[500]` | `text-base font-medium` |
+| `text-[16px] font-[400]` | `text-base` |
+| `text-[14px] font-[400]` | `text-sm` |
+| `text-[12px] font-[400]` | `text-xs` |
+
+<!-- 继续添加 -->

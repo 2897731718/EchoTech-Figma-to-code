@@ -26,43 +26,54 @@
 ## UnoCSS 配置
 
 <!--
-⚠ 根据实际项目配置修改此部分
-your-ui-lib 使用 unocss-preset-echo，间距单位需确认
+⚠ 根据实际项目 uno.config.ts 配置修改此部分
 -->
 
-**间距单位**：1unit = 1px（请根据 uno.config.ts 确认）
+**间距单位**：保留 px 后缀（presetUno 默认配置）
 
-换算示例（1unit = 1px 时）：
-- 骨架 `gap-2`（标准 8px）→ 项目写 `gap-8`
-- 骨架 `px-3.75`（15px）→ 项目写 `px-15`
-- 骨架 `py-4`（16px）→ 项目写 `py-16`
+写法示例：
+- 骨架 `gap-[8px]` → 项目写 `gap-8px` 或保留 `gap-[8px]`
+- 骨架 `px-[15px]` → 项目写 `px-15px` 或保留 `px-[15px]`
+- 骨架 `w-[100px]` → 项目写 `w-100px` 或保留 `w-[100px]`
+- 骨架 `rounded-[8px]` → 项目写 `rounded-8px`
+
+<!--
+如果项目使用 unocss-preset-echo（1unit = 1px），则可去掉 px：
+- 骨架 `gap-[8px]` → 项目写 `gap-8`
+-->
 
 ---
 
 ## 设计 Token
 
-<!--
-⚠ 以下为参考值，根据实际项目的 uno.config.ts / theme.css 填写
--->
+### 颜色 Token
+
+骨架已输出 `var(--token-name, #fallback)` 格式，可直接使用。
+
+- 项目有 `design-tokens.css` → 自动使用 `var(--token-name)`
+- 项目没有对应变量 → 自动 fallback 到原始颜色值
+
+**无需手动维护颜色映射表。**
 
 ### 文字样式
 
-| 骨架输出 | 项目 class |
-|---|---|
-| `text-[18px] font-medium` | `text-h3 fw-500` |
-| `text-base font-medium` / `text-[16px] font-medium` | `text-h4 fw-500` |
-| `text-base font-normal` / `text-[16px]` | `text-b4` |
-| `text-sm font-normal` / `text-[14px]` | `text-b5` |
-| `text-[12px]` | `text-b6` |
-
-### 颜色 Token
+<!--
+⚠ 以下为参考值，根据实际项目的 uno.config.ts 填写
+骨架输出原始 CSS 值，翻译时按此表转换为项目 shortcuts
+-->
 
 | 骨架输出 | 项目 class |
 |---|---|
-| `text-[rgba(0,0,0,0.88)]` / `text-black` | `c-text-1` |
-| `text-[rgba(0,0,0,0.64)]` | `c-text-2` |
-| `text-[rgba(0,0,0,0.4)]` / `text-[#999]` | `c-text-3` |
-| `bg-[#F7F7F9]` / `bg-[#f5f5f5]` | `bg-page` |
+| `text-[24px] font-[500] leading-[30px]` | `text-h1` |
+| `text-[20px] font-[500] leading-[26px]` | `text-h2` |
+| `text-[18px] font-[500] leading-[25px]` | `text-h3` |
+| `text-[16px] font-[500] leading-[24px]` | `text-h4` |
+| `text-[14px] font-[500] leading-[22px]` | `text-h5` |
+| `text-[12px] font-[500] leading-[18px]` | `text-h6` |
+| `text-[16px] font-[400] leading-[24px]` | `text-b4` |
+| `text-[14px] font-[400] leading-[22px]` | `text-b5` |
+| `text-[12px] font-[400] leading-[18px]` | `text-b6` |
+| `text-[10px] font-[400] leading-[11px]` | `text-b8` |
 
 ---
 

@@ -34,8 +34,9 @@ import { Form, FormItem, DuPopup, DuTag, DuSwitch, DuTextarea, DuUpload } from '
 
 ## 生成规则
 
-1. **宽度不写死**：容器统一用 `w-full`，只有图标、头像等固定尺寸元素保留 `w-[Npx]`
-2. **颜色用 token**：优先用项目 token 表；找不到对应 token 时，用 UnoCSS hex 短语法替代（`text-[#f96464]` → `c-hex-f96464`，`bg-[#f96464]` → `bg-hex-f96464`，`border-[#f96464]` → `b-hex-f96464`），不要保留 `text-[#xxxxxx]` 写法
+1. **宽度不写死**：容器统一用 `w-full`，只有图标、头像等固定尺寸元素保留固定尺寸
+2. **单位保留 px**：骨架中的 `gap-[8px]`、`p-[12px]`、`rounded-[8px]` 等，翻译时写成 `gap-8px`、`p-12px`、`rounded-8px`（不要去掉 px 后缀，否则会被解析为 rem）
+3. **颜色用 token**：优先用项目 token 表；找不到对应 token 时，用 UnoCSS hex 短语法替代（`text-[#f96464]` → `c-hex-f96464`，`bg-[#f96464]` → `bg-hex-f96464`，`border-[#f96464]` → `b-hex-f96464`），不要保留 `text-[#xxxxxx]` 写法
 3. **动态内容**：静态文字改为 `{{ variable }}`，在 script 中声明对应 `ref`
 4. **交互占位**：所有 `@click`、`@change` 加 `// TODO: 实现` 注释的方法
 5. **图标名称**：从骨架 INSTANCE 名中提取，转为 kebab-case（`IconArrowRight` → `arrow-right`）
