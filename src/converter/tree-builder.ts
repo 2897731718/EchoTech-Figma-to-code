@@ -443,7 +443,17 @@ export function buildComponentTree(
     }
   } else if (node.children && node.children.length > 0) {
     componentNode.children = []
-    for (const child of node.children) {
+    // 非 Auto Layout 容器：按 y 坐标排序，使输出顺序与视觉位置一致
+    const frameNode = node as FrameNode
+    const isAutoLayout = frameNode.layoutMode && frameNode.layoutMode !== 'NONE'
+    const sortedChildren = isAutoLayout
+      ? node.children
+      : [...node.children].sort((a, b) => {
+          const ay = a.absoluteBoundingBox?.y ?? 0
+          const by = b.absoluteBoundingBox?.y ?? 0
+          return ay - by
+        })
+    for (const child of sortedChildren) {
       const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap, i18nMap, componentClassNameMap)
       if (childNode) {
         componentNode.children.push(childNode)
