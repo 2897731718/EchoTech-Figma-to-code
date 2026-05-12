@@ -3,6 +3,21 @@ export interface UnoCSSMapping {
   class: string | ((value: string) => string)
 }
 
+// hex→token 映射表，由外部调用 setHexToTokenMap 设置
+let hexToTokenMap: Record<string, string> = {}
+
+/**
+ * 设置 hex→token 映射表
+ * @param map 映射表，支持 Map 或 Record 格式
+ */
+export function setHexToTokenMap(map: Map<string, string> | Record<string, string>): void {
+  if (map instanceof Map) {
+    hexToTokenMap = Object.fromEntries(map)
+  } else {
+    hexToTokenMap = map
+  }
+}
+
 // 保留原始 px 值，供项目层（figma-context.md + skill）按自身规则换算
 function rawPx(value: string): string | null {
   const match = value.match(/^(\d+(?:\.\d+)?)px$/)
@@ -106,6 +121,15 @@ export function convertHeight(value: string): string | null {
 }
 
 export function convertColor(value: string): string | null {
+  // 先查 hex→token 映射表，匹配时输出 var(--token, fallback) 格式
+  const normalizedValue = value.replace(/\s/g, '') // 去除空格
+  const tokenName = hexToTokenMap[normalizedValue] || hexToTokenMap[normalizedValue.toLowerCase()]
+  if (tokenName) {
+    // 保留原始值作为 fallback，项目没定义 token 时也能用
+    return `bg-[var(${tokenName},${normalizedValue})]`
+  }
+
+  // 未匹配则保留原值
   if (value === '#ffffff' || value === 'rgb(255, 255, 255)') return 'bg-white'
   if (value === '#000000' || value === 'rgb(0, 0, 0)') return 'bg-black'
   if (value.startsWith('#') || value.startsWith('rgb')) return `bg-[${value}]`
