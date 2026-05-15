@@ -20,7 +20,6 @@ export type {
   VariableScope,
   ComponentsResponse,
   StylesResponse,
-  VariablesResponse,
   MeResponse,
   TypeStyle,
   Effect,

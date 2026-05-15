@@ -156,11 +156,14 @@ export class VueGenerator implements CodeGenerator {
       ? `${indent}<!-- 横滑容器：小程序用 <scroll-view scroll-x>，H5 用 overflow-x-auto -->\n`
       : ''
 
+    // 有子节点的组件也需要 figma-node 注释
+    const nodeComment = node.componentId ? ` <!-- figma-node: ${node.componentId} -->` : ''
+
     let code = `${scrollComment}${indent}<${node.tag}${attrsStr}>\n`
     for (const child of node.children) {
       code += `${this.generateTemplate(child, depth + 1)}\n`
     }
-    code += `${indent}</${node.tag}>`
+    code += `${indent}</${node.tag}>${nodeComment}`
 
     return code
   }

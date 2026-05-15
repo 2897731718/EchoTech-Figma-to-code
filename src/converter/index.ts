@@ -336,24 +336,8 @@ export async function convertFigmaToCode(
 
   const styleConverter = createStyleConverter(styleFormat)
 
-  // 构建 Variable ID → CSS 变量名映射（失败时静默降级）
+  // 构建 Variable ID → CSS 变量名映射
   let variableMap: VariableMap | undefined
-  try {
-    const variablesData = await client.getVariables(options.fileKey)
-    const variables = variablesData.meta?.variables
-    if (variables && Object.keys(variables).length > 0) {
-      variableMap = new Map()
-      for (const [id, variable] of Object.entries(variables)) {
-        // 优先使用 Figma 设置的 codeSyntax.WEB，否则从 name 派生
-        const cssVarName = (variable.codeSyntax as Record<string, string> | undefined)?.WEB
-          ?? `--${variable.name.replace(/\//g, '-').replace(/\s+/g, '-').toLowerCase()}`
-        variableMap.set(id, cssVarName)
-      }
-    }
-  } catch (e) {
-    // Variables API 不可用（非 Enterprise 或权限不足），正常降级
-    console.error(`[figma-to-code] Variables API 不可用，颜色将使用原始色值（${(e as Error).message?.slice(0, 60)}）`)
-  }
 
   // 提取插件导出的变量映射（sharedPluginData）
   const pluginData = (fileData.document as Record<string, unknown>).sharedPluginData as Record<string, Record<string, string>> | undefined

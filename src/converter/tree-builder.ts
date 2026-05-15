@@ -395,7 +395,10 @@ export function buildComponentTree(
     tag: getTagForNode(node, componentClassNameMap),
     nodeId: node.id,
     props: {},
-    ...(node.componentId ? { componentId: node.componentId } : {}),
+    // INSTANCE 用 componentId，COMPONENT 用自身 id（方便递归生成）
+    ...(node.componentId
+      ? { componentId: node.componentId }
+      : node.type === 'COMPONENT' ? { componentId: node.id } : {}),
     parsedStyles: parsed,
     ...(node.componentProperties ? { componentProps: extractComponentProps(node.componentProperties) } : {}),
     // 语义名：INSTANCE/COMPONENT 节点保留 Figma 节点名
