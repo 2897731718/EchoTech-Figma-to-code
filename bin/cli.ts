@@ -38,36 +38,73 @@ interface DetectResult {
   reason: string
 }
 
-function detectStyleMode(cwd: string = process.cwd()): DetectResult {
-  // 读取 package.json
-  let pkgDeps: Record<string, string> = {}
-  const pkgPath = resolve(cwd, 'package.json')
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
-      pkgDeps = { ...pkg.dependencies, ...pkg.devDependencies }
-    } catch { /* ignore */ }
-  }
+// 检测配置文件是否存在（支持多种扩展名）
+function hasConfig(cwd: string, baseName: string): boolean {
+  const exts = ['.ts', '.js', '.mts', '.mjs', '.cjs']
+  return exts.some(ext => existsSync(resolve(cwd, baseName + ext)))
+}
 
-  // 1. 检测 UnoCSS
-  if (existsSync(resolve(cwd, 'uno.config.ts')) || existsSync(resolve(cwd, 'uno.config.js'))) {
-    return { mode: 'unocss', reason: '检测到 uno.config.ts/js' }
+// 读取依赖（当前目录 + monorepo 根目录）
+function readDeps(cwd: string): Record<string, string> {
+  let deps: Record<string, string> = {}
+  let dir = cwd
+
+  // 向上查找，合并所有 package.json 的依赖（monorepo 支持）
+  while (dir !== dirname(dir)) {
+    const pkgPath = resolve(dir, 'package.json')
+    if (existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'))
+        deps = { ...pkg.dependencies, ...pkg.devDependencies, ...deps }
+        // 遇到 monorepo 根（有 workspaces）或已找到目标依赖时停止
+        if (pkg.workspaces || deps['unocss'] || deps['tailwindcss']) break
+      } catch { /* ignore */ }
+    }
+    dir = dirname(dir)
+  }
+  return deps
+}
+
+// 检测 vite.config 中是否使用 UnoCSS
+function hasUnocssInViteConfig(cwd: string): boolean {
+  const viteConfigs = ['vite.config.ts', 'vite.config.js', 'vite.config.mts', 'vite.config.mjs']
+  for (const name of viteConfigs) {
+    const configPath = resolve(cwd, name)
+    if (existsSync(configPath)) {
+      try {
+        const content = readFileSync(configPath, 'utf-8')
+        if (/unocss|UnoCSS/.test(content)) return true
+      } catch { /* ignore */ }
+    }
+  }
+  return false
+}
+
+function detectStyleMode(cwd: string = process.cwd()): DetectResult {
+  const pkgDeps = readDeps(cwd)
+
+  // 1. 检测 UnoCSS（配置文件 → vite 插件 → 依赖）
+  if (hasConfig(cwd, 'uno.config') || hasConfig(cwd, 'unocss.config')) {
+    return { mode: 'unocss', reason: '检测到 uno(css).config.*' }
+  }
+  if (hasUnocssInViteConfig(cwd)) {
+    return { mode: 'unocss', reason: '检测到 vite.config 中使用 UnoCSS' }
   }
   if (pkgDeps['unocss']) {
     return { mode: 'unocss', reason: '检测到 unocss 依赖' }
   }
 
   // 2. 检测 Tailwind CSS
-  if (existsSync(resolve(cwd, 'tailwind.config.js')) || existsSync(resolve(cwd, 'tailwind.config.ts'))) {
-    return { mode: 'unocss', reason: '检测到 tailwind.config.js/ts' }
+  if (hasConfig(cwd, 'tailwind.config')) {
+    return { mode: 'unocss', reason: '检测到 tailwind.config.*' }
   }
   if (pkgDeps['tailwindcss']) {
     return { mode: 'unocss', reason: '检测到 tailwindcss 依赖' }
   }
 
   // 3. 检测 WindiCSS
-  if (existsSync(resolve(cwd, 'windi.config.ts')) || existsSync(resolve(cwd, 'windi.config.js'))) {
-    return { mode: 'unocss', reason: '检测到 windi.config.ts/js' }
+  if (hasConfig(cwd, 'windi.config')) {
+    return { mode: 'unocss', reason: '检测到 windi.config.*' }
   }
   if (pkgDeps['windicss']) {
     return { mode: 'unocss', reason: '检测到 windicss 依赖' }
@@ -79,7 +116,7 @@ function detectStyleMode(cwd: string = process.cwd()): DetectResult {
   }
 
   // 5. 检测 Taro
-  if (pkgDeps['@tarojs/taro'] || existsSync(resolve(cwd, 'config/index.js'))) {
+  if (pkgDeps['@tarojs/taro'] || hasConfig(cwd, 'config/index')) {
     return { mode: 'inline', reason: '检测到 Taro 项目' }
   }
 

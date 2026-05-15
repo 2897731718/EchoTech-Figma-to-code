@@ -38,11 +38,11 @@ function loadTokenMap(product: string = 'product-a'): Map<string, string> | unde
 
 
 // 社区
-// const FIGMA_URL = 'https://www.figma.com/design/uXywt7Ca6AR4dNm7f3zR7d/02_%E4%B8%9A%E5%8A%A1%E7%BB%84%E4%BB%B6-%F0%9F%91%BB_%E7%A4%BE%E5%8C%BA?node-id=14202-599741&m=dev'
+const FIGMA_URL = 'https://www.figma.com/design/uXywt7Ca6AR4dNm7f3zR7d/02_%E4%B8%9A%E5%8A%A1%E7%BB%84%E4%BB%B6-%F0%9F%91%BB_%E7%A4%BE%E5%8C%BA?node-id=14202-599741&m=dev'
 
 
 // 原子子组件
-const FIGMA_URL = 'https://www.figma.com/design/HjpmfUPwU7HGMRj9X80TAY/00_%E5%8E%9F%E5%AD%90%E5%88%86%E5%AD%90%E7%BB%84%E4%BB%B6-%F0%9F%92%99?node-id=79878-30242&m=dev'
+// const FIGMA_URL = 'https://www.figma.com/design/HjpmfUPwU7HGMRj9X80TAY/00_%E5%8E%9F%E5%AD%90%E5%88%86%E5%AD%90%E7%BB%84%E4%BB%B6-%F0%9F%92%99?node-id=79878-30242&m=dev'
 
 /**
  * 解析 Figma URL 中的 fileKey 和 nodeId

@@ -251,29 +251,6 @@ export interface StylesResponse {
   err?: string
 }
 
-export interface VariablesResponse {
-  meta: {
-    variables: Record<string, Variable>
-    variableCollections: Record<string, VariableCollection>
-  }
-  status: number
-  err?: string
-}
-
-export interface VariableCollection {
-  id: string
-  name: string
-  modes: VariableMode[]
-  defaultModeId: string
-  hiddenFromPublishing?: boolean
-  key: string
-}
-
-export interface VariableMode {
-  modeId: string
-  name: string
-}
-
 export interface MeResponse {
   id: string
   email: string

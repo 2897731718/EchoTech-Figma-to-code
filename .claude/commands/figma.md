@@ -42,8 +42,10 @@ npx figma-to-code $URL --framework=vue --tokens=product-a
 2. 如果存在 `.claude/figma-base/` 目录（新版按需加载模式）：
    - 读取 `.claude/figma-context.md` — 项目定制（业务组件映射、Token）
    - 读取 `.claude/figma-base/core.md` — 核心翻译原则
-   - **解析第一步生成的骨架代码**，提取其中出现的组件标签（如 `<Button>`、`<DuInput>`）
-   - 读取 `.claude/figma-base/index.json`，根据组件标签查找对应的规则文件
+   - **读取 `.claude/figma-base/index.json`**，获取 `aliases` 映射表
+   - **解析第一步生成的骨架代码**，提取所有组件标签
+   - **用 `aliases` 映射组件名**：骨架中的 `NavigationBar` → `DuNavigationBar`，`SearchBar` → `DuSearch` 等
+   - 根据映射后的组件名查找对应的规则文件（`components` 字段）
    - **只读取用到的组件规则**：`.claude/figma-base/components/*.md`
    - 读取 `.claude/figma-base/layout.md` — 布局模式规则
    - 可选读取 `.claude/project-tokens.md` — 项目 token 列表
@@ -52,17 +54,53 @@ npx figma-to-code $URL --framework=vue --tokens=product-a
    - 读取 `.claude/figma-context.md` — 完整的组件映射和样式规范
    - 可选读取 `.claude/project-tokens.md` — 项目 token 列表
 
+**组件名映射规则**（基于 `index.json` 的 `aliases`）：
+- 骨架中 `<NavigationBar>` → 命中 aliases → 使用 `<DuNavigationBar>`
+- 骨架中 `<SearchBar>` → 命中 aliases → 使用 `<DuSearch>`
+- 骨架中 `<ProductCard>` → 未命中 aliases → 保持原名，查业务组件映射表
+
 **组件规则按需加载示例**：
-- 骨架中出现 `<Button>` → 读取 `components/button.md`
-- 骨架中出现 `<DuInput>` → 读取 `components/input.md`
-- 骨架中出现 `<FormItem>` → 读取 `components/form.md`
+- 映射后出现 `Button` → 读取 `components/button.md`
+- 映射后出现 `DuNavigationBar` → 读取 `components/navigation.md`
+- 映射后出现 `FormItem` → 读取 `components/form.md`
 - 未出现的组件规则不需要读取
 
 **第三步：翻译骨架为业务组件**
 
-对照 `figma-context.md` 中的规范：
+**3.1 组件名转换**（最重要的一步）：
 
-- INSTANCE 标签 → 映射为项目真实组件
+骨架中的组件标签按以下优先级处理：
+
+1. **命中 `aliases`** → 转为 UI 库组件（如 `NavigationBar` → `DuNavigationBar`）
+2. **命中业务组件映射表**（`figma-context.md`）→ 使用已生成的业务组件
+3. **未命中任何映射** → 保留原名，标记为待处理（第五步询问用户）
+
+**3.2 告警机制**：
+
+翻译过程中遇到以下情况时，输出告警信息提示用户：
+
+| 情况 | 告警 | 处理方式 |
+|------|------|----------|
+| 💙 分子组件匹配，但骨架中的属性与组件规则不完全匹配 | ⚠️ **属性参数不完全匹配** | 列出不匹配的属性，提示用户检查是否需要手动调整 |
+| INSTANCE 节点既未命中 `aliases` 也未命中业务映射表 | ⚠️ **未识别的组件，可能需要更新组件库** | 检查是否是新增的 UI 库组件未收录到 `index.json`，或是待生成的业务组件 |
+
+**告警输出格式**：
+
+```
+⚠️ 告警：DuNavigationBar 属性参数不完全匹配
+   - 骨架属性：color="White" terminal="App"
+   - 已匹配：color
+   - 未匹配：terminal（组件规则中未定义此属性）
+   → 建议：检查是否为新增属性，或需要用 extClass 透传
+
+⚠️ 告警：未识别的组件 <ProductBanner>（figma-node: 12345:67890）
+   - 未命中 aliases（非 UI 库组件）
+   - 未命中业务组件映射表（非已生成的业务组件）
+   → 建议：第五步确认是否需要递归生成
+```
+
+**3.3 样式和内容转换**：
+
 - 原始颜色/尺寸 → 替换为项目 token
 - 容器宽度 → 改为 `w-full`（unocss 模式）或 `width: 100%`（css/inline 模式）
 - 静态文字 → 改为 `{{ variable }}`，交互元素加 `@click` / `v-model` 占位
@@ -107,7 +145,7 @@ npx figma-to-code $URL --framework=vue --tokens=product-a
 
 翻译完成后，检查骨架中所有带 `<!-- figma-node: xxx -->` 注释的标签：
 
-1. **对每个未识别的 INSTANCE**（未命中 `figma-context.md` 业务组件映射表的），询问用户：
+1. **对每个未识别的 INSTANCE**（未命中 `aliases` 且未命中业务组件映射表的），询问用户：
 
    > 发现未识别的子组件 `<ComponentName>`（figma-node: xxx），是否需要生成对应文件？如需要，请告知保存路径（如 `src/components/ComponentName.vue`）。
 

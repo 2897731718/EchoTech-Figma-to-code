@@ -3,8 +3,7 @@ import type {
   FileResponse,
   ImagesResponse,
   MeResponse,
-  StylesResponse,
-  VariablesResponse
+  StylesResponse
 } from './types'
 
 const FIGMA_API_BASE = 'https://api.figma.com/v1'
@@ -121,10 +120,6 @@ export class FigmaAPIClient {
 
   async getStyles(fileKey: string): Promise<StylesResponse> {
     return this.request<StylesResponse>(`/files/${fileKey}/styles`)
-  }
-
-  async getVariables(fileKey: string): Promise<VariablesResponse> {
-    return this.request<VariablesResponse>(`/files/${fileKey}/variables/local`)
   }
 
   /**
