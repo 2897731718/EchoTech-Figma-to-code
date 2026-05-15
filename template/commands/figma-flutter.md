@@ -104,3 +104,34 @@ Read 骨架头部「设计稿参考截图」块里指向的 `.figma-to-code/<nod
 3. 用户跳过 → 保留占位标签。
 
 4. 全部处理完后，输出最终完整的主组件代码（含所有 import）。
+
+**第八步：清理中间产物（防误删）**
+
+主组件 + 所有递归子组件全部翻译并自检通过后，逐个删掉本次用到的参考截图。**每个 PNG 单独走下面四步，绝不批量删、绝不带通配符。**
+
+对本次涉及的每个 `<nodeId>`（主组件 + 第七步每个子组件）：
+
+```bash
+# 1. 列出删除前的内容，记下基线
+ls .figma-to-code/
+
+# 2. 校验：目标必须存在且是 PNG
+test -f .figma-to-code/<nodeId>.png || { echo "跳过：文件不存在"; }
+file .figma-to-code/<nodeId>.png       # 输出必须含 "PNG image"
+
+# 3. 精准删除（-- 隔断，防止 nodeId 被解析成 flag）
+rm -f -- .figma-to-code/<nodeId>.png
+
+# 4. 再次列出，对比基线 —— 必须只有目标文件消失
+ls .figma-to-code/
+```
+
+任一步发现实际删除范围超出目标 PNG（多文件 / 不同文件名 / 目录消失）→ **立即停止后续清理，把异常输出贴给用户**。
+
+全部 PNG 删完后，若目录已空，一并清掉：
+
+```bash
+rmdir .figma-to-code 2>/dev/null || true   # 非空会自动失败，不会误删
+```
+
+> 严禁 `rm -rf .figma-to-code/*` 或 `rm .figma-to-code/*.png` —— 用户可能并行跑其他 figma-flutter 流程，通配符会误伤其他产物的 PNG。
