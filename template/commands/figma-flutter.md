@@ -8,6 +8,24 @@
 
 ---
 
+## 两种模式
+
+**A. 全量生成**：`/figma-flutter <figma-url> [dart-path]`
+   走下面「步骤」段第一~八步，从 Figma 拉骨架重新翻译。
+
+**B. 二次修正（--fix）**：`/figma-flutter --fix <dart-path>`
+   不从 Figma 重拉，对照 **上次落盘的骨架** + **现有 Dart 文件** 做差异对账并修正。**只动有差异的 Widget，禁止整段重写**。详见下方「--fix 模式」段。
+
+> **用户说"彻底重写 / 全部重做"但没附链接** → 不要立刻反问。先按以下顺序自动反查：
+> 1. 当前会话历史 grep `https://www.figma.com/(file|design)/.*?node-id=`，命中就直接用
+> 2. 从目标 Dart 文件 grep 第一条 `// FRAME  |  figma-node: <id>` 或 `INSTANCE figma-node: <id>` 注释提主 nodeId（`:` → `-`）
+> 3. Read `.figma-to-code/skeleton-<sanitizedId>.dart` 头部三行元数据，取 `// figma-url:` 字段
+> 4. 用反查到的 URL 走 A 模式（全量）
+>
+> 三步都失败（旧版本骨架无元数据 / 文件已删 / Dart 无 figma-node 锚点）才反问用户要链接。
+
+---
+
 ## 前置：必须先有规范文件
 
 本流程依赖项目级规范文件 `.claude/flutter-conventions.md`。若不存在，让用户先运行其中之一，再回来：
@@ -107,7 +125,9 @@ Read 骨架头部「设计稿参考截图」块里指向的 `.figma-to-code/<nod
 
 **第八步：清理中间产物（防误删）**
 
-主组件 + 所有递归子组件全部翻译并自检通过后，逐个删掉本次用到的参考截图。**每个 PNG 单独走下面四步，绝不批量删、绝不带通配符。**
+主组件 + 所有递归子组件全部翻译并自检通过后，逐个删掉本次用到的参考截图（PNG）。**`skeleton-<nodeId>.dart` 骨架文件不要删，留给 `/figma-flutter --fix` 二次修正用。**
+
+**每个 PNG 单独走下面四步，绝不批量删、绝不带通配符。**
 
 对本次涉及的每个 `<nodeId>`（主组件 + 第七步每个子组件）：
 
@@ -122,16 +142,57 @@ file .figma-to-code/<nodeId>.png       # 输出必须含 "PNG image"
 # 3. 精准删除（-- 隔断，防止 nodeId 被解析成 flag）
 rm -f -- .figma-to-code/<nodeId>.png
 
-# 4. 再次列出，对比基线 —— 必须只有目标文件消失
+# 4. 再次列出，对比基线 —— 必须只有目标 PNG 消失,skeleton-<nodeId>.dart 必须仍在
 ls .figma-to-code/
 ```
 
-任一步发现实际删除范围超出目标 PNG（多文件 / 不同文件名 / 目录消失）→ **立即停止后续清理，把异常输出贴给用户**。
+任一步发现实际删除范围超出目标 PNG（多文件 / 不同文件名 / 骨架 .dart 消失 / 目录消失）→ **立即停止后续清理，把异常输出贴给用户**。
 
-全部 PNG 删完后，若目录已空，一并清掉：
+> 严禁 `rm -rf .figma-to-code/*` 或 `rm .figma-to-code/*` —— 会把骨架文件一起干掉，导致 `/figma-flutter --fix` 失去对账依据；也可能误伤并行跑的其他 figma-flutter 流程产物。
+>
+> 不要 `rmdir .figma-to-code`：骨架文件保留意味着目录会持续非空，目录本身已被加入 `.gitignore`，留着无害。
 
-```bash
-rmdir .figma-to-code 2>/dev/null || true   # 非空会自动失败，不会误删
-```
+---
 
-> 严禁 `rm -rf .figma-to-code/*` 或 `rm .figma-to-code/*.png` —— 用户可能并行跑其他 figma-flutter 流程，通配符会误伤其他产物的 PNG。
+## --fix 模式
+
+触发条件：用户输入 `/figma-flutter --fix <dart-path>`（无 URL）。
+
+**与全量模式的核心差异**：不重新拉 Figma，对照 **上次落盘的骨架** + **现有 Dart** 做差异对账。骨架在前一次 `/figma-flutter <url>` 跑完时已落盘到 `.figma-to-code/skeleton-<nodeId>.dart`（CLI 自动产生，第八步不会清理）。
+
+**步骤**：
+
+1. **Read 目标 Dart 文件** `<dart-path>`。
+
+2. **提取主 nodeId**：从文件里 grep 第一条 `// FRAME  |  figma-node: <id>` 或 `// ... INSTANCE figma-node: <id>` 注释（通常对应最外层 Widget）。把 `:` 替换为 `-` 得到 sanitized id（与 CLI 落盘命名一致）。
+   - 找不到任何 `figma-node:` 注释 → 报告"无法对账，文件里没有 figma-node 锚点"，请用户改用 `/figma-flutter <原url> <dart-path>` 走全量。
+
+3. **Read 上次骨架** `.figma-to-code/skeleton-<sanitizedId>.dart`。
+   - 不存在 → 报告"未找到上次骨架，请先跑 `/figma-flutter <原url> <dart-path>` 生成基线产物"。
+   - 文件头部三行元数据可用：
+     ```dart
+     // figma-url: https://www.figma.com/design/<fileKey>/<name>?node-id=<id>
+     // figma-node-id: <冒号格式 id>
+     // generated-at: <ISO 时间戳>
+     ```
+     - `figma-url` —— 用户切到"彻底重写"分支时反查原链接走全量用，**`--fix` 本身不重拉 Figma**
+     - `generated-at` —— 判断骨架是否过期；若用户说"Figma 改过了"，应建议走全量重新落盘，不要在过期骨架上 `--fix`
+     - 旧版本骨架可能没这三行元数据（升级前生成的）—— 没有就直接对账，不要因此失败
+
+4. **Read 上次截图**（可选）`.figma-to-code/<sanitizedId>.png`。第八步清理后默认不在；不在就跳过视觉对账，靠骨架对账。
+
+5. **Read 规范** `.claude/flutter-conventions.md`（同全量模式第二步）。
+
+6. **差异对账（核心）**：以**骨架的每个节点**为最小单元，逐项核对现有 Dart：
+
+   - **逐 FRAME 容器**：搜骨架里所有 `// FRAME  |  figma-node: <子id>  |  stroke=... | radius=... | spacing=...` 注释，在现有 Dart 里 grep `figma-node: <子id>`（或对应 Widget），核到 `border / borderRadius / spacing` 三项**实际落地**到产物里（按规范替换成 `AppColor.qd.*` / `AppSpacing.*` 也算落地）。漏的、值不对的、被简化掉的，全部修正。
+   - **逐 INSTANCE**：搜骨架里所有 `// ... INSTANCE figma-node: <id>  |  {props}` 注释，核到现有 Dart 里对应组件调用的构造参数齐了，没有空构造残留、props 都按变体注释映射对了。
+   - **TEXT 节点**：核到文案对、i18n key 对（`CustomLocalizationsManager.current(context).xxx`）。
+   - **Container 装饰**：颜色/圆角/边框对应规范 token（`AppColor.qd.*` 等），无 `Color(0xFF...)` / 裸 `TextStyle(fontSize: ...)` / 裸 `SizedBox(width/height: N)` 残留（参考全量第六步自检清单）。
+   - **结构**：Stack/Row/Column 嵌套层级与骨架一致；不要因为"看着差不多"就合并/拍平。
+
+7. **只动有差异的 Widget**：修正时就地编辑，**严禁整段重写文件**。每一处改动必须能对应到骨架/截图里的一个具体差异点。
+
+8. **跑一次自检清单**（同全量模式第六步）+ 报告给用户："已修正 N 处差异：① stroke 漏了 / ② spacing 错值 / ③ ..."，列出具体差异点而非笼统说"已对照修复"。
+
+**--fix 模式不做的事**：不重跑 CLI、不重新拉 Figma、不重新生成骨架、不重新导截图。如果用户怀疑 Figma 本身有更新，应该走全量模式 `/figma-flutter <url> <dart-path>` 重新落基线，再视情况 `--fix`。

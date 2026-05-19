@@ -315,6 +315,30 @@ function extractTailwindTokens(content: string): TokenInfo[] {
 }
 
 /**
+ * 把 .figma-to-code/ 加入项目 .gitignore（幂等）。
+ * 骨架文件落盘后是长期中间产物,需要避免被误 commit;
+ * 截图虽然走 skill 第八步主动清,但流程中途用户也可能 commit,所以一并保护。
+ * 非 git 项目（无 .git 目录）静默跳过;有 .git 但无 .gitignore 只提示不主动建。
+ */
+function ensureFigmaToCodeGitignored(cwd: string): void {
+  const gitignorePath = resolve(cwd, '.gitignore')
+  const entry = '.figma-to-code/'
+  if (existsSync(gitignorePath)) {
+    const content = readFileSync(gitignorePath, 'utf-8')
+    const alreadyIgnored = content.split(/\r?\n/).some(line => {
+      const t = line.trim()
+      return t === entry || t === '/.figma-to-code/' || t === '.figma-to-code' || t === '/.figma-to-code'
+    })
+    if (alreadyIgnored) return
+    const sep = content.length === 0 || content.endsWith('\n') ? '' : '\n'
+    writeFileSync(gitignorePath, `${content}${sep}\n# figma-to-code 骨架/参考图 中间产物\n${entry}\n`)
+    console.error('[figma-to-code] 已追加 .figma-to-code/ 到 .gitignore')
+  } else if (existsSync(resolve(cwd, '.git'))) {
+    console.error('[figma-to-code] ⚠ 项目无 .gitignore，建议手动加一行 .figma-to-code/ 避免中间产物入库')
+  }
+}
+
+/**
  * 生成 project-tokens.md 文件
  */
 function generateTokensDoc(tokens: TokenInfo[], outputPath: string): void {
@@ -1011,6 +1035,7 @@ if (wantImage) {
         const buf = Buffer.from(await resp.arrayBuffer())
         const dir = resolve(process.cwd(), '.figma-to-code')
         mkdirSync(dir, { recursive: true })
+        ensureFigmaToCodeGitignored(process.cwd())
         const filePath = join(dir, `${nodeId.replace(/:/g, '-')}.png`)
         writeFileSync(filePath, buf)
         flutterReferenceImage = relative(process.cwd(), filePath)
@@ -1041,6 +1066,31 @@ try {
     console.error('\n[figma-to-code] 识别到的子组件：')
     for (const inst of result.instanceComponents) {
       console.error(`  - ${inst.name}  figma-node: ${inst.componentId}`)
+    }
+  }
+
+  // Flutter 模式 + 有 nodeId 时,骨架同时落盘到 .figma-to-code/skeleton-<nodeId>.dart,
+  // 供 /figma-flutter --fix <dart-path> 二次修正、用户要求"彻底重写"时反查原 url 用 ——
+  // CLI 本身无状态,这份落盘文件是唯一中间产物钩子。
+  //
+  // 文件头部 prepend 三行元数据(figma-url / node-id / 时间戳),只写到落盘文件,
+  // 不污染 stdout (stdout 给 IDE AI 走翻译流程,翻译产物里不该带原始 url)。
+  if (framework === 'flutter' && nodeId) {
+    try {
+      const dir = resolve(process.cwd(), '.figma-to-code')
+      mkdirSync(dir, { recursive: true })
+      ensureFigmaToCodeGitignored(process.cwd())
+      const skeletonPath = join(dir, `skeleton-${nodeId.replace(/:/g, '-')}.dart`)
+      const meta = [
+        `// figma-url: ${url}`,
+        `// figma-node-id: ${nodeId}`,
+        `// generated-at: ${new Date().toISOString()}`,
+        '',
+      ].join('\n')
+      writeFileSync(skeletonPath, meta + result.code)
+      console.error(`[figma-to-code] 骨架已落盘: ${relative(process.cwd(), skeletonPath)} (供 /figma-flutter --fix 二次修正用)`)
+    } catch (e) {
+      console.error(`[figma-to-code] ⚠ 骨架落盘失败: ${(e as Error).message?.slice(0, 100)} (不影响 stdout 产出)`)
     }
   }
 
