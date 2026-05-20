@@ -21,6 +21,14 @@ export class VueGenerator implements CodeGenerator {
     const indent = '  '.repeat(depth)
     const attrs: string[] = []
 
+    // 保留 Figma 原始节点类型和名称
+    if (node.figmaType) {
+      attrs.push(`data-type="${node.figmaType}"`)
+    }
+    if (node.figmaName) {
+      attrs.push(`data-name="${node.figmaName}"`)
+    }
+
     if (node.className) {
       attrs.push(`class="${node.className}"`)
     }
@@ -43,13 +51,6 @@ export class VueGenerator implements CodeGenerator {
     }
 
     if (!node.children || node.children.length === 0) {
-      // 矢量图标容器 → 直接生成 Icon
-      if (node.isVectorIcon && node.iconName) {
-        const size = node.parsedStyles?.width ?? node.parsedStyles?.height
-        const sizeAttr = size ? ` :size="${size}"` : ''
-        return `${indent}<Icon name="${node.iconName}"${sizeAttr} />`
-      }
-
       // 折叠的 INSTANCE 节点：输出 componentProps、instanceTextOverrides、nestedInstances
       const propsFromComponent = this.generateComponentProps(node.componentProps)
       const textOverrides = node.instanceTextOverrides
@@ -159,7 +160,10 @@ export class VueGenerator implements CodeGenerator {
     // 有子节点的组件也需要 figma-node 注释
     const nodeComment = node.componentId ? ` <!-- figma-node: ${node.componentId} -->` : ''
 
-    let code = `${scrollComment}${indent}<${node.tag}${attrsStr}>\n`
+    // 有子节点时也要输出 componentProps（INSTANCE 的变体属性）
+    const propsFromComponent = this.generateComponentProps(node.componentProps)
+
+    let code = `${scrollComment}${indent}<${node.tag}${attrsStr}${propsFromComponent}>\n`
     for (const child of node.children) {
       code += `${this.generateTemplate(child, depth + 1)}\n`
     }

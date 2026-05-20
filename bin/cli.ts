@@ -616,41 +616,48 @@ if (command === 'init') {
     }
   }
 
-  // 复制 figma-base 目录（按需加载的组件规则，仅特定 UI 库有）
-  if (uiLib) {
-    const baseTemplateName = `figma-base-${uiLib}`
-    const baseSrc = resolve(templateDir, baseTemplateName)
+  // 复制 figma-base 目录（按需加载的组件规则）
+  // 结构：先复制 base/ 基础模板，再合并 {uiLib}/ 特有规则
+  {
     const baseDst = resolve(targetDir, 'figma-base')
-    if (existsSync(baseSrc)) {
-      if (existsSync(baseDst)) {
-        console.log('⚠ .claude/figma-base/ 已存在，跳过（使用 figma-to-code update 更新）')
-      } else {
-        cpSync(baseSrc, baseDst, { recursive: true })
-        const versionFile = resolve(baseDst, 'version.txt')
-        const version = existsSync(versionFile) ? readFileSync(versionFile, 'utf-8').trim() : 'unknown'
-        console.log(`✔ 已创建 .claude/figma-base/（版本 ${version}）`)
+    if (existsSync(baseDst)) {
+      console.log('⚠ .claude/figma-base/ 已存在，跳过（使用 figma-to-code update 更新）')
+    } else {
+      // 1. 先复制 base/ 基础模板
+      const baseSrc = resolve(templateDir, 'base')
+      if (existsSync(baseSrc)) {
+        mkdirSync(baseDst, { recursive: true })
+        // 复制 base/business.md → figma-base/business/_catalog.md
+        const businessSrc = resolve(baseSrc, 'business.md')
+        if (existsSync(businessSrc)) {
+          mkdirSync(resolve(baseDst, 'business'), { recursive: true })
+          copyFileSync(businessSrc, resolve(baseDst, 'business', '_catalog.md'))
+        }
+        // 复制 base/components.md → figma-base/components/_catalog.md
+        const componentsSrc = resolve(baseSrc, 'components.md')
+        if (existsSync(componentsSrc)) {
+          mkdirSync(resolve(baseDst, 'components'), { recursive: true })
+          copyFileSync(componentsSrc, resolve(baseDst, 'components', '_catalog.md'))
+        }
       }
+
+      // 2. 再合并 {uiLib}/ 特有规则（会覆盖 base 同名文件）
+      if (uiLib) {
+        const uiLibSrc = resolve(templateDir, uiLib)
+        if (existsSync(uiLibSrc)) {
+          cpSync(uiLibSrc, baseDst, { recursive: true })
+        }
+      }
+
+      const versionFile = resolve(baseDst, 'version.txt')
+      const version = existsSync(versionFile) ? readFileSync(versionFile, 'utf-8').trim() : 'unknown'
+      console.log(`✔ 已创建 .claude/figma-base/（版本 ${version}）`)
     }
   }
 
-  // 选择 context 模板（精简版，项目定制部分）
-  const templateName = uiLib ? `figma-context-${uiLib}.md` : 'figma-context.md'
-  const contextSrc = resolve(templateDir, templateName)
-  const contextDst = resolve(targetDir, 'figma-context.md')
-
-  if (!existsSync(contextSrc)) {
-    console.error(`✖ 未找到模板：${templateName}`)
-    console.error(`  可用模板：figma-context.md（通用）、figma-context-your-ui-lib.md、figma-context-react.md`)
-    console.error(`  Flutter 项目请使用 figma-to-code init --ui=custom-flutter（走独立的规范文件流程）`)
-    process.exit(1)
-  }
-
-  if (existsSync(contextDst)) {
-    console.log('⚠ .claude/figma-context.md 已存在，跳过')
-  } else {
-    copyFileSync(contextSrc, contextDst)
-    console.log(`✔ 已创建 .claude/figma-context.md（基于 ${templateName}）`)
-  }
+  // 选择 context 模板（已废弃，改为直接使用 figma-base 目录结构）
+  // 2026-05: figma-context.md 已拆分为 figma-base/ 下的多个文件
+  // 保留此段代码以便旧版本平滑过渡，若目标目录无 figma-context.md 也不报错
 
   // ── 扫描项目 Token ────────────────────────────────────────────
   const tokensDst = resolve(targetDir, 'project-tokens.md')
@@ -672,7 +679,7 @@ if (command === 'init') {
   console.log('\n✅ 安装完成！\n')
   console.log('使用方式：')
   console.log('  /figma <figma-url>               生成代码')
-  console.log('  编辑 .claude/figma-context.md 补充项目的 token 和 UnoCSS 配置')
+  console.log('  编辑 .claude/figma-base/ 下的规范文件（如需更新请运行 figma-to-code update）')
   maybeCheckForUpdate()
   process.exit(0)
 }
@@ -692,11 +699,17 @@ if (command === 'update') {
   // 检测当前使用的 UI 库
   let detectedUiLib = uiLib
   if (!detectedUiLib && existsSync(baseDst)) {
-    const indexPath = resolve(baseDst, 'index.json')
-    if (existsSync(indexPath)) {
+    // 从 components/_catalog.md 的 frontmatter 读取 uiLib
+    const catalogPath = resolve(baseDst, 'components', '_catalog.md')
+    if (existsSync(catalogPath)) {
       try {
-        const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'))
-        detectedUiLib = indexData.uiLib
+        const content = readFileSync(catalogPath, 'utf-8')
+        const match = content.match(/^---\n([\s\S]*?)\n---/)
+        if (match) {
+          const frontmatter = match[1]
+          const uiLibMatch = frontmatter.match(/uiLib:\s*(\S+)/)
+          if (uiLibMatch) detectedUiLib = uiLibMatch[1]
+        }
       } catch { /* ignore */ }
     }
   }
@@ -707,11 +720,10 @@ if (command === 'update') {
     process.exit(1)
   }
 
-  // generic 使用 figma-base，其他使用 figma-base-{uiLib}
-  const baseSrcName = detectedUiLib === 'generic' ? 'figma-base' : `figma-base-${detectedUiLib}`
-  const baseSrc = resolve(templateDir, baseSrcName)
-  if (!existsSync(baseSrc)) {
-    console.error(`✖ 未找到 ${baseSrcName} 模板`)
+  // 检查 uiLib 模板目录是否存在
+  const uiLibSrc = resolve(templateDir, detectedUiLib)
+  if (!existsSync(uiLibSrc)) {
+    console.error(`✖ 未找到 ${detectedUiLib} 模板`)
     process.exit(1)
   }
 
@@ -723,7 +735,7 @@ if (command === 'update') {
   }
 
   // 读取新版本
-  const newVersionFile = resolve(baseSrc, 'version.txt')
+  const newVersionFile = resolve(uiLibSrc, 'version.txt')
   const newVersion = existsSync(newVersionFile) ? readFileSync(newVersionFile, 'utf-8').trim() : 'unknown'
 
   if (currentVersion === newVersion) {
@@ -731,13 +743,32 @@ if (command === 'update') {
     process.exit(0)
   }
 
-  // 删除旧目录，复制新目录
+  // 删除旧目录，重新复制（先 base 再 uiLib）
   if (existsSync(baseDst)) {
     rmSync(baseDst, { recursive: true })
   }
-  cpSync(baseSrc, baseDst, { recursive: true })
+  mkdirSync(baseDst, { recursive: true })
+
+  // 1. 复制 base/ 基础模板
+  const baseSrc = resolve(templateDir, 'base')
+  if (existsSync(baseSrc)) {
+    const businessSrc = resolve(baseSrc, 'business.md')
+    if (existsSync(businessSrc)) {
+      mkdirSync(resolve(baseDst, 'business'), { recursive: true })
+      copyFileSync(businessSrc, resolve(baseDst, 'business', '_catalog.md'))
+    }
+    const componentsSrc = resolve(baseSrc, 'components.md')
+    if (existsSync(componentsSrc)) {
+      mkdirSync(resolve(baseDst, 'components'), { recursive: true })
+      copyFileSync(componentsSrc, resolve(baseDst, 'components', '_catalog.md'))
+    }
+  }
+
+  // 2. 合并 uiLib 特有规则
+  cpSync(uiLibSrc, baseDst, { recursive: true })
+
   console.log(`✔ figma-base 已更新: ${currentVersion} → ${newVersion}`)
-  console.log('  （.claude/figma-context.md 保持不变，如需更新请手动合并）')
+  console.log('  （figma-base 目录已更新，如有个性化修改请手动合并）')
   process.exit(0)
 }
 
@@ -756,11 +787,17 @@ if (command === 'diff') {
   // 检测当前使用的 UI 库
   let detectedUiLib = uiLib
   if (!detectedUiLib && existsSync(baseDst)) {
-    const indexPath = resolve(baseDst, 'index.json')
-    if (existsSync(indexPath)) {
+    // 从 components/_catalog.md 的 frontmatter 读取 uiLib
+    const catalogPath = resolve(baseDst, 'components', '_catalog.md')
+    if (existsSync(catalogPath)) {
       try {
-        const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'))
-        detectedUiLib = indexData.uiLib
+        const content = readFileSync(catalogPath, 'utf-8')
+        const match = content.match(/^---\n([\s\S]*?)\n---/)
+        if (match) {
+          const frontmatter = match[1]
+          const uiLibMatch = frontmatter.match(/uiLib:\s*(\S+)/)
+          if (uiLibMatch) detectedUiLib = uiLibMatch[1]
+        }
       } catch { /* ignore */ }
     }
   }
@@ -771,11 +808,10 @@ if (command === 'diff') {
     process.exit(1)
   }
 
-  // generic 使用 figma-base，其他使用 figma-base-{uiLib}
-  const baseSrcName = detectedUiLib === 'generic' ? 'figma-base' : `figma-base-${detectedUiLib}`
-  const baseSrc = resolve(templateDir, baseSrcName)
-  if (!existsSync(baseSrc)) {
-    console.error(`✖ 未找到 ${baseSrcName} 模板`)
+  // 检查 uiLib 模板目录是否存在
+  const uiLibSrc = resolve(templateDir, detectedUiLib)
+  if (!existsSync(uiLibSrc)) {
+    console.error(`✖ 未找到 ${detectedUiLib} 模板`)
     process.exit(1)
   }
 
@@ -787,7 +823,7 @@ if (command === 'diff') {
   }
 
   // 读取新版本
-  const newVersionFile = resolve(baseSrc, 'version.txt')
+  const newVersionFile = resolve(uiLibSrc, 'version.txt')
   const newVersion = existsSync(newVersionFile) ? readFileSync(newVersionFile, 'utf-8').trim() : 'unknown'
 
   console.log(`figma-base 版本对比（${detectedUiLib}）：`)
