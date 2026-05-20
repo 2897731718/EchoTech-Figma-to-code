@@ -237,14 +237,16 @@ describe('simplifyNode', () => {
     id: '1:1', name: 'Node', type: 'FRAME', ...overrides
   })
 
-  it('默认情况下 INSTANCE 节点清空 children', () => {
+  it('INSTANCE 节点保留 children 结构', () => {
     const node = makeNode({
       type: 'INSTANCE',
       componentId: '99:1',
       children: [makeNode({ id: '2:1', name: 'Child', type: 'TEXT' })]
     })
     const result = simplifyNode(node)
-    expect(result.children).toEqual([])
+    // INSTANCE 不再折叠，保留子节点结构
+    expect(result.children).toHaveLength(1)
+    expect(result.children![0].name).toBe('Child')
   })
 
   it('isRoot=true 时 COMPONENT 节点保留 children', () => {
@@ -255,13 +257,15 @@ describe('simplifyNode', () => {
     expect(result.children![0].id).toBe('2:1')
   })
 
-  it('嵌套 COMPONENT 在非根位置仍被剪枝', () => {
+  it('嵌套 COMPONENT 在非根位置保留 children 结构', () => {
     const nested = makeNode({ id: '3:1', name: 'Nested', type: 'COMPONENT',
       children: [makeNode({ id: '4:1', name: 'DeepChild', type: 'TEXT' })]
     })
     const root = makeNode({ type: 'FRAME', children: [nested] })
     const result = simplifyNode(root, true)
-    expect(result.children![0].children).toEqual([])
+    // COMPONENT 不再被折叠，保留子节点
+    expect(result.children![0].children).toHaveLength(1)
+    expect(result.children![0].children![0].name).toBe('DeepChild')
   })
 })
 

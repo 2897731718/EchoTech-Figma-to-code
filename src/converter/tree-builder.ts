@@ -208,6 +208,9 @@ function isScrollContainer(node: Node): boolean {
  * 单子节点 + 无视觉样式（无填充/描边/圆角/padding）
  */
 function isPassthrough(node: Node): boolean {
+  // INSTANCE/COMPONENT 有语义意义，不作为透传容器折叠
+  if (node.type === 'INSTANCE' || node.type === 'COMPONENT') return false
+
   const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
   if (visibleChildren.length !== 1) return false
 
@@ -266,11 +269,24 @@ function collectNestedInstances(
 
 /**
  * 递归抓取节点子树里所有可见 TEXT 的 characters，用于 INSTANCE 折叠前保留文本。
- * 空串、不可见节点跳过；顺序为深度优先遍历顺序（保留视觉阅读顺序）。
+ * 空串、不可见节点跳过；根据父容器 layoutMode 按视觉位置排序。
  */
-function collectTextOverrides(nodes: Node[]): Array<{ name?: string; text: string }> {
+function collectTextOverrides(nodes: Node[], layoutMode?: string): Array<{ name?: string; text: string }> {
   const result: Array<{ name?: string; text: string }> = []
-  for (const n of nodes) {
+  // 根据父容器布局方向排序：HORIZONTAL 先 x 后 y，其他先 y 后 x
+  const sorted = [...nodes].sort((a, b) => {
+    const ax = a.absoluteBoundingBox?.x ?? 0
+    const bx = b.absoluteBoundingBox?.x ?? 0
+    const ay = a.absoluteBoundingBox?.y ?? 0
+    const by = b.absoluteBoundingBox?.y ?? 0
+    if (layoutMode === 'HORIZONTAL') {
+      if (ax !== bx) return ax - bx
+      return ay - by
+    }
+    if (ay !== by) return ay - by
+    return ax - bx
+  })
+  for (const n of sorted) {
     if (n.visible === false) continue
     if (n.type === 'TEXT') {
       const text = (n.characters ?? '').trim()
@@ -279,7 +295,8 @@ function collectTextOverrides(nodes: Node[]): Array<{ name?: string; text: strin
       }
     }
     if (n.children) {
-      result.push(...collectTextOverrides(n.children))
+      const childLayout = (n as FrameNode).layoutMode
+      result.push(...collectTextOverrides(n.children, childLayout))
     }
   }
   return result
@@ -297,28 +314,13 @@ export function simplifyNode(
   mappedComponentIds?: Set<string>,
   foldingOptions?: InstanceFoldingOptions
 ): Node {
-  // 策略一：INSTANCE / 嵌套 COMPONENT 节点处理（根节点除外）
-  if (!isRoot && (node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
-    // annotation_config 精确映射优先
-    const isMapped = node.componentId && mappedComponentIds?.has(node.componentId)
-    if (isMapped || shouldFoldInstance(node, foldingOptions)) {
-      // 折叠前先抓子节点的 TEXT 文本和嵌套 INSTANCE，避免丢失
-      const textOverrides = collectTextOverrides(node.children ?? [])
-      const nestedInstances = collectNestedInstances(node.children ?? [])
-      const folded = { ...node, children: [] } as Node & {
-        _textOverrides?: Array<{ name?: string; text: string }>
-        _nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }>
-      }
-      if (textOverrides.length > 0) folded._textOverrides = textOverrides
-      if (nestedInstances.length > 0) folded._nestedInstances = nestedInstances
-      return folded
-    }
-    // 业务/组合组件：继续递归简化子节点，不折叠
-  }
+  // 策略一：INSTANCE / 嵌套 COMPONENT 节点 - 不再折叠清空 children，保留结构层级
+  // 继续递归处理子节点，让骨架保留完整的布局信息
 
-  // 策略 1.5：矢量图标容器折叠（children 全是 VECTOR 等形状 → 视为图标，剥离子节点）
+  // 策略 1.5：矢量图标容器折叠（children 全是 VECTOR 等形状 → 视为图标，折叠子节点）
+  // 输出 data-type="ICON" 语义标记，翻译时替换为 <img> 或图标组件
   if (!isRoot && isVectorIconContainer(node)) {
-    return { ...node, children: [], _vectorIcon: true } as Node
+    return { ...node, children: [], _iconContainer: true } as Node
   }
 
   // 先递归简化 children
@@ -384,9 +386,8 @@ export function buildComponentTree(
     if (node.type !== 'TEXT') delete parsed.height
   }
 
-  const isVectorIcon = (node as Node & { _vectorIcon?: boolean })._vectorIcon === true
-  const iconName = isVectorIcon && node.name ? extractIconName(node.name) : undefined
   const scrollContainer = isScrollContainer(node)
+  const isIconContainer = (node as Node & { _iconContainer?: boolean })._iconContainer === true
   const annotation = node.componentId ? componentClassNameMap?.get(node.componentId) : undefined
   const textOverrides = (node as Node & { _textOverrides?: Array<{ name?: string; text: string }> })._textOverrides
   const nestedInstances = (node as Node & { _nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }> })._nestedInstances
@@ -395,6 +396,9 @@ export function buildComponentTree(
     tag: getTagForNode(node, componentClassNameMap),
     nodeId: node.id,
     props: {},
+    // 保留 Figma 原始节点类型和名称（矢量图标容器标记为 ICON）
+    figmaType: isIconContainer ? 'ICON' : node.type,
+    figmaName: node.name,
     // INSTANCE 用 componentId，COMPONENT 用自身 id（方便递归生成）
     ...(node.componentId
       ? { componentId: node.componentId }
@@ -405,8 +409,6 @@ export function buildComponentTree(
     ...((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.name ? { semanticName: node.name } : {}),
     // flex-1：layoutGrow=1 时标记
     ...(node.layoutGrow === 1 ? { isExpanded: true } : {}),
-    // 矢量图标容器标记 + 图标名
-    ...(isVectorIcon ? { isVectorIcon: true, iconName } : {}),
     // 横滑容器标记
     ...(scrollContainer ? { isScrollContainer: true, scrollAxis: 'horizontal' as const } : {}),
     // auto-layout wrap（GridView 识别依据）
@@ -446,7 +448,7 @@ export function buildComponentTree(
     }
   } else if (node.children && node.children.length > 0) {
     componentNode.children = []
-    // 非 Auto Layout 容器：按 y 坐标排序，使输出顺序与视觉位置一致
+    // 非 Auto Layout 容器：按视觉位置排序（先 y 后 x），使输出顺序与视觉一致
     const frameNode = node as FrameNode
     const isAutoLayout = frameNode.layoutMode && frameNode.layoutMode !== 'NONE'
     const sortedChildren = isAutoLayout
@@ -454,7 +456,10 @@ export function buildComponentTree(
       : [...node.children].sort((a, b) => {
           const ay = a.absoluteBoundingBox?.y ?? 0
           const by = b.absoluteBoundingBox?.y ?? 0
-          return ay - by
+          if (ay !== by) return ay - by
+          const ax = a.absoluteBoundingBox?.x ?? 0
+          const bx = b.absoluteBoundingBox?.x ?? 0
+          return ax - bx
         })
     for (const child of sortedChildren) {
       const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap, i18nMap, componentClassNameMap)

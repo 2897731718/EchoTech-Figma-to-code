@@ -127,8 +127,8 @@ describe('tree-builder', () => {
     })
   })
 
-  describe('simplifyNode - INSTANCE 折叠', () => {
-    it('叶子 INSTANCE 应该被折叠', () => {
+  describe('simplifyNode - INSTANCE 结构保留', () => {
+    it('INSTANCE 保留子节点结构', () => {
       const node: Node = {
         id: 'root',
         name: 'Root',
@@ -150,10 +150,12 @@ describe('tree-builder', () => {
 
       const simplified = simplifyNode(node, true)
       const inst = simplified.children?.[0]
-      expect(inst?.children?.length).toBe(0)
+      // INSTANCE 不再折叠，保留子节点
+      expect(inst?.children?.length).toBe(1)
+      expect(inst?.children?.[0].name).toBe('Label')
     })
 
-    it('折叠叶子 INSTANCE 时保留子节点 TEXT 覆盖', () => {
+    it('INSTANCE 保留子节点结构而非折叠', () => {
       const node: Node = {
         id: 'root',
         name: 'Root',
@@ -179,12 +181,12 @@ describe('tree-builder', () => {
       } as unknown as Node
 
       const simplified = simplifyNode(node, true)
-      const inst = simplified.children?.[0] as Node & { _textOverrides?: Array<{ name?: string; text: string }> }
-      expect(inst.children?.length).toBe(0)
-      expect(inst._textOverrides).toEqual([
-        { name: 'Title', text: '暗黑破坏神4' },
-        { name: 'Subtitle', text: '跟车服务' }
-      ])
+      const inst = simplified.children?.[0] as Node
+      // INSTANCE 不再折叠，保留子节点结构（过滤掉不可见节点）
+      // Content FRAME 是透传容器（单子节点无样式），被折叠为其子节点 Subtitle
+      expect(inst.children?.length).toBe(3) // Title, Subtitle（Content 被折叠）, Empty（Hidden 被过滤）
+      expect(inst.children?.[0].name).toBe('Title')
+      expect(inst.children?.[1].name).toBe('Subtitle') // Content FRAME 被折叠
     })
 
     it.skip('包含嵌套 INSTANCE 的组件不应该被折叠', () => {

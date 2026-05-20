@@ -15,6 +15,10 @@ export interface ComponentNode {
   text?: string
   i18nKey?: string
   props?: Record<string, string>
+  /** Figma 原始节点类型（FRAME, TEXT, BOOLEAN_OPERATION 等） */
+  figmaType?: string
+  /** Figma 原始节点名称 */
+  figmaName?: string
   nodeId?: string
   componentId?: string
   /** 结构化样式（从 Figma 节点直接提取，移动端生成器使用） */
@@ -25,10 +29,6 @@ export interface ComponentNode {
   semanticName?: string
   /** 是否 flex-1（layoutGrow=1，对应 Flutter Expanded） */
   isExpanded?: boolean
-  /** 矢量图标容器（children 全为 VECTOR，已折叠） */
-  isVectorIcon?: boolean
-  /** 图标名（从节点名提取，kebab-case） */
-  iconName?: string
   /** 横滑容器（子元素总宽超过容器宽） */
   isScrollContainer?: boolean
   /** 横滑容器的滚动轴（目前只支持 'horizontal'） */

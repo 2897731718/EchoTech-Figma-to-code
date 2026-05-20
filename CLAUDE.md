@@ -35,9 +35,9 @@ Two entry points: library (`src/index.ts`) and CLI (`bin/cli.ts`).
 Figma REST API → raw node tree → simplifyNode() (denoise) → buildComponentTree() → generator (vue/html/react) → skeleton code
 ```
 
-**i18n support:** TEXT nodes bound to Figma Variables (via lemon i18n platform) are auto-detected and output as `{{ t('key') }}`. Requires the `i18n Variable Exporter` Figma plugin to be run once per file (see ARCHITECTURE.md § i18n).
+**i18n support:** TEXT nodes bound to Figma Variables (via lemon i18n platform) are auto-detected and output as `{{ t('key') }}`. Requires the `i18n Variable Exporter` Figma plugin to be run once per file (see docs/architecture.md § i18n).
 
-**Three denoising strategies** applied in sequence (see ARCHITECTURE.md for details):
+**Three denoising strategies** applied in sequence (see docs/architecture.md for details):
 1. INSTANCE nodes: children stripped — only name + dimensions kept
 2. Pass-through containers: single-child wrappers with no visual styles collapsed
 3. Width auto-detection: child width ≈ parent content width → omit fixed width
