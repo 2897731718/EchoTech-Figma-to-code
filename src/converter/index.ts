@@ -13,7 +13,7 @@ import type { Framework, StyleFormat, ComponentNode } from './generators/types'
 import { createGenerator } from './generators/generator-factory'
 import { createStyleConverter } from './styles/converter-factory'
 import { setHexToTokenMap } from './unocss/mappings'
-import { buildComponentTree, simplifyNode, parseI18nKey, detectBaseComponentPrefixes, todoIconNames } from './tree-builder'
+import { buildComponentTree, simplifyNode, parseI18nKey, todoIconNames, isLayoutContainer } from './tree-builder'
 import type { InstanceFoldingOptions } from './tree-builder'
 import { loadAnnotationMap, buildComponentClassNameMap, type AnnotationPlatform } from './annotation'
 
@@ -23,8 +23,10 @@ export interface ConvertOptions {
   client?: FigmaAPIClient
   framework?: Framework
   styleFormat?: StyleFormat
-  /** 手动指定基础组件前缀（如 ["💙"]），匹配的 INSTANCE 会折叠。不传则自动检测 */
-  baseComponentPrefixes?: string[]
+  /** 白名单：匹配的组件前缀会折叠（如 ["💙"]） */
+  foldPrefixes?: string[]
+  /** 黑名单：匹配的组件前缀不折叠（如 ["👻"]），优先级高于白名单和结构兜底 */
+  noFoldPrefixes?: string[]
   /** 预加载的 token 映射（variableId → CSS 变量名），用于颜色输出 */
   preloadedTokenMap?: Map<string, string>
   /** 当前项目可供 IDE AI 参考的 .md 路径（CLI 侧扫描传入，用于未映射组件提示） */
@@ -192,7 +194,7 @@ export function convertNodeToCSS(
     }
   }
 
-  if (node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE') {
+  if (isLayoutContainer(node)) {
     const layoutStyles = convertAutoLayout(node as FrameNode)
     Object.assign(css, layoutStyles)
 
@@ -400,12 +402,13 @@ export async function convertFigmaToCode(
   // 预处理：折叠透传容器 + INSTANCE 智能折叠
   const mappedComponentIds = componentClassNameMap ? new Set(componentClassNameMap.keys()) : undefined
 
-  // INSTANCE 折叠策略：配置前缀 > 自动检测 emoji > 叶子 INSTANCE 兜底
+  // INSTANCE 折叠策略：黑名单 > 白名单 > 结构兜底（叶子 INSTANCE）
   const foldingOptions: InstanceFoldingOptions = {}
-  if (options.baseComponentPrefixes?.length) {
-    foldingOptions.baseComponentPrefixes = options.baseComponentPrefixes
-  } else {
-    foldingOptions.detectedPrefixes = detectBaseComponentPrefixes(fileData.document)
+  if (options.foldPrefixes?.length) {
+    foldingOptions.foldPrefixes = options.foldPrefixes
+  }
+  if (options.noFoldPrefixes?.length) {
+    foldingOptions.noFoldPrefixes = options.noFoldPrefixes
   }
 
   const simplifiedNode = simplifyNode(targetNode, true, mappedComponentIds, foldingOptions)

@@ -8,8 +8,8 @@ import {
 import type { Node } from '../src/api/types'
 
 describe('tree-builder', () => {
-  describe('detectBaseComponentPrefixes', () => {
-    it('应该检测出高频 emoji 前缀', () => {
+  describe('detectBaseComponentPrefixes (deprecated)', () => {
+    it('已废弃，始终返回空数组', () => {
       const root: Node = {
         id: 'root',
         name: 'Root',
@@ -17,41 +17,7 @@ describe('tree-builder', () => {
         children: [
           { id: '1', name: '💙 Button', type: 'INSTANCE', componentId: 'c1' },
           { id: '2', name: '💙 Input', type: 'INSTANCE', componentId: 'c2' },
-          { id: '3', name: '💙 Icon', type: 'INSTANCE', componentId: 'c3' },
-          { id: '4', name: '💙 Tag', type: 'INSTANCE', componentId: 'c4' },
-          { id: '5', name: '💙 Switch', type: 'INSTANCE', componentId: 'c5' },
-          { id: '6', name: 'CustomCard', type: 'INSTANCE', componentId: 'c6' },
         ]
-      } as unknown as Node
-
-      const prefixes = detectBaseComponentPrefixes(root)
-      expect(prefixes).toContain('💙')
-    })
-
-    it('占比不足 40% 时不应检测为前缀', () => {
-      const root: Node = {
-        id: 'root',
-        name: 'Root',
-        type: 'FRAME',
-        children: [
-          { id: '1', name: '💙 Button', type: 'INSTANCE', componentId: 'c1' },
-          { id: '2', name: 'Card', type: 'INSTANCE', componentId: 'c2' },
-          { id: '3', name: 'List', type: 'INSTANCE', componentId: 'c3' },
-          { id: '4', name: 'Header', type: 'INSTANCE', componentId: 'c4' },
-          { id: '5', name: 'Footer', type: 'INSTANCE', componentId: 'c5' },
-        ]
-      } as unknown as Node
-
-      const prefixes = detectBaseComponentPrefixes(root)
-      expect(prefixes).not.toContain('💙')
-    })
-
-    it('空树应返回空数组', () => {
-      const root: Node = {
-        id: 'root',
-        name: 'Root',
-        type: 'FRAME',
-        children: []
       } as unknown as Node
 
       const prefixes = detectBaseComponentPrefixes(root)
@@ -150,12 +116,11 @@ describe('tree-builder', () => {
 
       const simplified = simplifyNode(node, true)
       const inst = simplified.children?.[0]
-      // INSTANCE 不再折叠，保留子节点
-      expect(inst?.children?.length).toBe(1)
-      expect(inst?.children?.[0].name).toBe('Label')
+      // 叶子 INSTANCE（无嵌套组件）会被结构兜底折叠
+      expect(inst?.children?.length).toBe(0)
     })
 
-    it('INSTANCE 保留子节点结构而非折叠', () => {
+    it('叶子 INSTANCE 会被结构兜底折叠', () => {
       const node: Node = {
         id: 'root',
         name: 'Root',
@@ -182,11 +147,8 @@ describe('tree-builder', () => {
 
       const simplified = simplifyNode(node, true)
       const inst = simplified.children?.[0] as Node
-      // INSTANCE 不再折叠，保留子节点结构（过滤掉不可见节点）
-      // Content FRAME 是透传容器（单子节点无样式），被折叠为其子节点 Subtitle
-      expect(inst.children?.length).toBe(3) // Title, Subtitle（Content 被折叠）, Empty（Hidden 被过滤）
-      expect(inst.children?.[0].name).toBe('Title')
-      expect(inst.children?.[1].name).toBe('Subtitle') // Content FRAME 被折叠
+      // 叶子 INSTANCE（无嵌套 INSTANCE）会被结构兜底折叠
+      expect(inst.children?.length).toBe(0)
     })
 
     it.skip('包含嵌套 INSTANCE 的组件不应该被折叠', () => {

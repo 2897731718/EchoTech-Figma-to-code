@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Figma design-to-code **skeleton extractor** — not a direct code generator. It extracts layout structure, spacing, and component instance names from Figma via REST API, producing intermediate HTML skeletons that IDE AI (Claude/Cursor) then translates into real project code using project-specific rules in `.claude/figma-context.md`.
 
-Published as `figma-to-code` to GitLab Package Registry (npm registry).
+Published to npm registry.
 
 ## Commands
 

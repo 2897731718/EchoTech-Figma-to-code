@@ -46,7 +46,8 @@
     "url": ""
   },
   "publishConfig": {
-    "registry": "https://registry.npmjs.org/api/v4/npm/packages/npm/"
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

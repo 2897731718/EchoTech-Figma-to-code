@@ -7,8 +7,10 @@
  *   figma-to-code <figma-url> [选项]      生成骨架并输出到 stdout
  *
  * 选项：
- *   --framework=vue|html|react   默认 vue
- *   --style=auto|unocss|css|inline    默认 auto（自动检测项目技术栈）
+ *   --framework=vue|html|react|flutter  默认 vue
+ *   --style=auto|unocss|css|inline      默认 auto（自动检测项目技术栈）
+ *   --fold-prefixes=💙                  白名单：匹配的组件折叠
+ *   --no-fold-prefixes=👻               黑名单：匹配的组件不折叠
  */
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
@@ -912,6 +914,52 @@ if (framework === 'flutter') {
   }
 }
 
+// INSTANCE 折叠前缀配置：CLI 参数 > core.md frontmatter > 无配置（结构兜底）
+let foldPrefixes: string[] | undefined
+let noFoldPrefixes: string[] | undefined
+
+// 1. 读取 .claude/figma-base/core.md 或 .claude/rules-base/core.md 的 frontmatter
+const coreMdPaths = [
+  resolve(process.cwd(), '.claude/figma-base/core.md'),
+  resolve(process.cwd(), '.claude/rules-base/core.md'),
+]
+for (const coreMdPath of coreMdPaths) {
+  if (existsSync(coreMdPath)) {
+    try {
+      const content = readFileSync(coreMdPath, 'utf-8')
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
+      if (frontmatterMatch) {
+        const frontmatter = frontmatterMatch[1]
+        // 解析 YAML frontmatter 中的 foldPrefixes 和 noFoldPrefixes
+        const foldMatch = frontmatter.match(/foldPrefixes:\s*\[(.*?)\]/)
+        const noFoldMatch = frontmatter.match(/noFoldPrefixes:\s*\[(.*?)\]/)
+        if (foldMatch) {
+          foldPrefixes = foldMatch[1].split(',').map(s => s.trim().replace(/["']/g, '')).filter(Boolean)
+        }
+        if (noFoldMatch) {
+          noFoldPrefixes = noFoldMatch[1].split(',').map(s => s.trim().replace(/["']/g, '')).filter(Boolean)
+        }
+        if (foldPrefixes?.length || noFoldPrefixes?.length) {
+          console.error(`[figma-to-code] 读取 ${coreMdPath.replace(process.cwd(), '.')} 折叠配置`)
+        }
+      }
+    } catch {
+      // 解析失败，忽略
+    }
+    break
+  }
+}
+
+// 2. CLI 参数覆盖配置
+const foldPrefixesArg = args.find(a => a.startsWith('--fold-prefixes='))?.split('=')[1]
+if (foldPrefixesArg) {
+  foldPrefixes = foldPrefixesArg.split(',').map(p => p.trim()).filter(Boolean)
+}
+const noFoldPrefixesArg = args.find(a => a.startsWith('--no-fold-prefixes='))?.split('=')[1]
+if (noFoldPrefixesArg) {
+  noFoldPrefixes = noFoldPrefixesArg.split(',').map(p => p.trim()).filter(Boolean)
+}
+
 // Token 映射：支持 product-a/product-b/product-c/product-d，默认 product-a
 //
 // JSON 支持两种 schema(并存,按 entry 自动识别):
@@ -985,6 +1033,8 @@ if (!url) {
   console.log('  --framework=vue|html|react|flutter   输出框架，默认 vue')
   console.log('  --style=auto|unocss|css|inline       样式格式，默认 auto（自动检测，flutter 时自动忽略）')
   console.log('  --tokens=product-a|product-b|product-c|product-d  token 映射，默认 product-a')
+  console.log('  --fold-prefixes=💙,📦               白名单：匹配的组件折叠（逗号分隔）')
+  console.log('  --no-fold-prefixes=👻               黑名单：匹配的组件不折叠（优先级高于白名单）')
   console.log('  --image                              （仅 flutter）额外导出节点渲染图到 .figma-to-code/，')
   console.log('                                       骨架头部会要求 IDE AI 读图对账还原度（改老页面尤其有用）')
   console.log('  --skip-version-check                 跳过远程版本检查（或设 FIGMA_TO_CODE_SKIP_VERSION_CHECK=1）')
@@ -1090,6 +1140,8 @@ try {
     nodeId,
     framework,
     styleFormat,
+    foldPrefixes,
+    noFoldPrefixes,
     preloadedTokenMap,
     projectReferenceFiles,
     flutterConventionsFile,

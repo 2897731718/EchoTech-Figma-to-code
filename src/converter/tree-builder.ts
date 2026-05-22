@@ -7,67 +7,39 @@ import { convertFillsToBackgroundColor } from './styles'
 import type { FrameNode } from './layout'
 import type { AnnotationPlatform } from './annotation'
 
-// ─── INSTANCE 智能折叠：基础组件检测 ─────────────────────────────────────────
+// ─── 组件类型判断 ─────────────────────────────────────────────────────────────
 
-/** 提取字符串开头的 emoji（trim 后匹配，容忍设计师输入前导空格） */
-function extractLeadingEmoji(name: string): string | null {
-  const match = name.trim().match(/^(\p{Emoji_Presentation}|\p{Extended_Pictographic})/u)
-  return match ? match[1] : null
+/** 组件类型集合：INSTANCE（实例）、COMPONENT（主组件）、COMPONENT_SET（变体集） */
+const COMPONENT_TYPES = new Set(['INSTANCE', 'COMPONENT', 'COMPONENT_SET'])
+
+/** 判断节点是否是组件（INSTANCE / COMPONENT / COMPONENT_SET） */
+export function isComponentNode(node: Node): boolean {
+  return COMPONENT_TYPES.has(node.type)
 }
 
+/** 布局容器类型集合：支持 auto-layout 的节点类型 */
+const LAYOUT_CONTAINER_TYPES = new Set(['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'])
+
+/** 判断节点是否是布局容器（可应用 auto-layout） */
+export function isLayoutContainer(node: Node): boolean {
+  return LAYOUT_CONTAINER_TYPES.has(node.type)
+}
+
+// ─── INSTANCE 智能折叠 ───────────────────────────────────────────────────────
+
 /**
- * 自动检测基础组件的 emoji 前缀：
- * 扫描所有 INSTANCE 的 name，找出占比 > 40% 的高频 emoji 前缀
+ * @deprecated 已移除 40% 阈值自动检测，改用配置 + 结构兜底方案
+ * 保留此函数以兼容旧 API，始终返回空数组
  */
-export function detectBaseComponentPrefixes(root: Node): string[] {
-  const namesByComponent = new Map<string, string>()
-
-  function walk(node: Node) {
-    if ((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.componentId && node.name) {
-      if (!namesByComponent.has(node.componentId)) {
-        namesByComponent.set(node.componentId, node.name)
-      }
-    }
-    if (node.children) {
-      for (const child of node.children) {
-        walk(child)
-      }
-    }
-  }
-  walk(root)
-
-  if (namesByComponent.size === 0) return []
-
-  // 统计 emoji 前缀频率
-  const emojiCount = new Map<string, number>()
-  for (const name of namesByComponent.values()) {
-    const emoji = extractLeadingEmoji(name)
-    if (emoji) {
-      emojiCount.set(emoji, (emojiCount.get(emoji) ?? 0) + 1)
-    }
-  }
-
-  // 占比超过 40% 的 emoji 认定为基础组件前缀
-  const threshold = namesByComponent.size * 0.4
-  const prefixes: string[] = []
-  for (const [emoji, count] of emojiCount) {
-    if (count >= threshold) {
-      prefixes.push(emoji)
-    }
-  }
-
-  if (prefixes.length > 0) {
-    console.error(`[figma-to-code] 自动检测基础组件前缀: ${prefixes.map(p => `"${p}"`).join(', ')}（${namesByComponent.size} 个组件）`)
-  }
-
-  return prefixes
+export function detectBaseComponentPrefixes(_root: Node): string[] {
+  return []
 }
 
 /** 判断 INSTANCE 节点的 children 中是否嵌套了其他 INSTANCE（穿透 FRAME/GROUP） */
 function hasNestedInstance(node: Node): boolean {
   for (const child of (node.children ?? [])) {
     if (child.visible === false) continue
-    if (child.type === 'INSTANCE' || child.type === 'COMPONENT') return true
+    if (isComponentNode(child)) return true
     if ((child.type === 'FRAME' || child.type === 'GROUP') && hasNestedInstance(child)) return true
   }
   return false
@@ -75,30 +47,32 @@ function hasNestedInstance(node: Node): boolean {
 
 /** INSTANCE 折叠配置 */
 export interface InstanceFoldingOptions {
-  /** 手动指定基础组件前缀（优先级最高） */
-  baseComponentPrefixes?: string[]
-  /** 自动检测出的 emoji 前缀（由 detectBaseComponentPrefixes 生成） */
-  detectedPrefixes?: string[]
+  /** 白名单：匹配的组件前缀会折叠（如 ["💙"]） */
+  foldPrefixes?: string[]
+  /** 黑名单：匹配的组件前缀不折叠（如 ["👻"]），优先级高于白名单和结构兜底 */
+  noFoldPrefixes?: string[]
 }
 
 /**
  * 判断 INSTANCE 是否应该折叠（剥离 children）：
- * 优先级：配置前缀 > 自动检测前缀 > 树结构兜底（叶子 INSTANCE）
+ * 优先级：黑名单 > 白名单 > 结构兜底（叶子 INSTANCE）
  */
 function shouldFoldInstance(node: Node, options?: InstanceFoldingOptions): boolean {
   const name = node.name?.trim() ?? ''
 
-  // 1. 配置的前缀优先
-  if (options?.baseComponentPrefixes?.length) {
-    return options.baseComponentPrefixes.some(p => name.startsWith(p))
+  // 1. 黑名单 → 不折叠（优先级最高）
+  if (options?.noFoldPrefixes?.length) {
+    if (options.noFoldPrefixes.some(p => name.startsWith(p))) {
+      return false
+    }
   }
 
-  // 2. 自动检测的 emoji 前缀
-  if (options?.detectedPrefixes?.length) {
-    return options.detectedPrefixes.some(p => name.startsWith(p))
+  // 2. 白名单 → 折叠
+  if (options?.foldPrefixes?.length) {
+    return options.foldPrefixes.some(p => name.startsWith(p))
   }
 
-  // 3. 兜底：叶子 INSTANCE（children 里没有嵌套 INSTANCE）→ 折叠
+  // 3. 结构兜底：叶子 INSTANCE（无嵌套组件）→ 折叠
   return !hasNestedInstance(node)
 }
 
@@ -209,7 +183,7 @@ function isScrollContainer(node: Node): boolean {
  */
 function isPassthrough(node: Node): boolean {
   // INSTANCE/COMPONENT 有语义意义，不作为透传容器折叠
-  if (node.type === 'INSTANCE' || node.type === 'COMPONENT') return false
+  if (isComponentNode(node)) return false
 
   const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
   if (visibleChildren.length !== 1) return false
@@ -248,7 +222,7 @@ function collectNestedInstances(
       if (slotMatch) slot = slotMatch[1].toLowerCase()
     }
 
-    if (n.type === 'INSTANCE' || n.type === 'COMPONENT') {
+    if (isComponentNode(n)) {
       const name = n.name?.trim() ?? ''
       if (name) {
         result.push({
@@ -314,8 +288,11 @@ export function simplifyNode(
   mappedComponentIds?: Set<string>,
   foldingOptions?: InstanceFoldingOptions
 ): Node {
-  // 策略一：INSTANCE / 嵌套 COMPONENT 节点 - 不再折叠清空 children，保留结构层级
-  // 继续递归处理子节点，让骨架保留完整的布局信息
+  // 策略一：INSTANCE 折叠（黑名单 > 白名单 > 结构兜底）
+  // 折叠的 INSTANCE 清空 children，只保留组件引用
+  if (!isRoot && isComponentNode(node) && shouldFoldInstance(node, foldingOptions)) {
+    return { ...node, children: [] }
+  }
 
   // 策略 1.5：矢量图标容器折叠（children 全是 VECTOR 等形状 → 视为图标，折叠子节点）
   // 输出 data-type="ICON" 语义标记，翻译时替换为 <img> 或图标组件
@@ -399,14 +376,14 @@ export function buildComponentTree(
     // 保留 Figma 原始节点类型和名称（矢量图标容器标记为 ICON）
     figmaType: isIconContainer ? 'ICON' : node.type,
     figmaName: node.name,
-    // INSTANCE 用 componentId，COMPONENT 用自身 id（方便递归生成）
+    // INSTANCE 用 componentId，COMPONENT / COMPONENT_SET 用自身 id（方便递归生成）
     ...(node.componentId
       ? { componentId: node.componentId }
-      : node.type === 'COMPONENT' ? { componentId: node.id } : {}),
+      : (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') ? { componentId: node.id } : {}),
     parsedStyles: parsed,
     ...(node.componentProperties ? { componentProps: extractComponentProps(node.componentProperties) } : {}),
-    // 语义名：INSTANCE/COMPONENT 节点保留 Figma 节点名
-    ...((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.name ? { semanticName: node.name } : {}),
+    // 语义名：组件节点保留 Figma 节点名
+    ...(isComponentNode(node) && node.name ? { semanticName: node.name } : {}),
     // flex-1：layoutGrow=1 时标记
     ...(node.layoutGrow === 1 ? { isExpanded: true } : {}),
     // 横滑容器标记
@@ -419,8 +396,8 @@ export function buildComponentTree(
     ...(textOverrides && textOverrides.length > 0 ? { instanceTextOverrides: textOverrides } : {}),
     // 折叠前抓到的嵌套 INSTANCE（如 NavigationBar 内的 SearchBar）
     ...(nestedInstances && nestedInstances.length > 0 ? { nestedInstances } : {}),
-    // 未映射 INSTANCE/COMPONENT：tag 是由 nameToPascalCase 降级得来，需要提示 IDE AI 查阅项目规范
-    ...(((node.type === 'INSTANCE' || node.type === 'COMPONENT') && node.componentId && !annotation?.className)
+    // 未映射组件：tag 是由 nameToPascalCase 降级得来，需要提示 IDE AI 查阅项目规范
+    ...((isComponentNode(node) && node.componentId && !annotation?.className)
       ? { isUnmappedInstance: true as const } : {})
   }
 
