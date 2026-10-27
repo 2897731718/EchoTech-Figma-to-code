@@ -36,6 +36,18 @@ export {
 export type { Framework, StyleFormat, ComponentNode } from './converter/generators/types'
 export { createGenerator } from './converter/generators/generator-factory'
 export { createStyleConverter } from './converter/styles/converter-factory'
+export {
+  CONTEXT_SCHEMA_VERSION,
+  createConversionContext,
+  type ConversionContextV1,
+  type ContextSourceV1,
+  type ContextStylesV1,
+  type ContextPropsV1,
+  type ContextComponentV1,
+  type ContextDiagnosticV1,
+  type ContextPreviewV1,
+  type DesignNodeV1,
+} from './converter/context'
 
 export {
   convertAutoLayout,

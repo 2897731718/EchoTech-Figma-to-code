@@ -1,61 +1,140 @@
 # Architecture
 
-figma-to-code 的核心流程是：
+Figma AI Coder separates deterministic evidence collection from AI-assisted implementation.
 
 ```text
-Figma URL
-  -> URL 解析与 PAT 读取
-  -> Figma REST API
-  -> 节点简化与实例折叠
-  -> 统一 DesignNode
-  -> 布局 / 样式 / token 解析
-  -> Vue / React / HTML 生成器
-  -> Agent 结合项目规则完成实现
+                               ┌─────────────────────────┐
+Figma URL ── context ─────────>│ semantic HTML + manifest│
+                               └────────────┬────────────┘
+                                            │
+                               ┌────────────▼────────────┐
+Repository ── inspect ────────>│ project context index   │
+                               └────────────┬────────────┘
+                                            │
+Project instructions/rules ─────────────────┤
+                                            ▼
+                                  Codex / Claude Code
+                                            │
+                              verify mappings and edit code
+                                            │
+                                            ▼
+                               formatter / typecheck / tests
 ```
 
-## 模块边界
+## Responsibility boundary
 
-- `src/api/`：Figma REST API 客户端和类型。
-- `src/extractor/`：把原始 Figma 节点简化为生成阶段需要的数据。
-- `src/converter/`：构建统一节点树、解析布局与样式、选择生成器。
-- `src/converter/generators/`：Vue、React 和 HTML 输出。
-- `src/token-loader.ts`：加载可选的 token 映射。
-- `bin/cli.ts`：命令行参数、初始化模板、输出和更新提示。
-- `template/`：Agent、基础规则和通用 UI 示例。
+### Deterministic CLI
 
-## 关键设计
+The CLI owns facts that should not depend on model judgment:
 
-### 统一中间结构
+- Figma URL parsing and local PAT resolution
+- Figma REST API access and error reporting
+- node simplification, layout and style extraction, and instance metadata
+- semantic HTML and structured manifest output
+- static repository inspection and bounded context output
+- path boundaries, generated state, and diagnostics
 
-API 原始响应不会直接进入模板生成器。提取层先删除无关字段、规范化节点类型，并建立 `DesignNode`。这样布局修复和生成器能够共享同一套语义。
+It does not select a project's business abstractions or claim that extracted HTML is final code.
 
-### 布局优先
+### AI coding Agent
 
-生成器优先保留 Auto Layout、Grid、间距、尺寸约束和绝对定位信息。视觉细节仍需要结合项目样式系统校准，但页面骨架应首先保持结构正确。
+The Agent owns repository-specific reasoning:
 
-### 实例折叠
+- reading applicable project instructions
+- verifying component exports, props, examples, and tokens
+- mapping Figma semantics to existing project abstractions
+- choosing the narrowest implementation scope
+- preserving user changes and resolving local conventions
+- running existing validation commands and reporting unresolved assumptions
 
-组件实例可以折叠为语义节点，同时保留文本覆盖、嵌套实例和图标信息。折叠前缀可通过 CLI 调整，以便适配不同设计系统。
+### Project-owned rules and adapters
 
-### 规则分层
+Rules under `.figma-ai-coder/` record stable company decisions. They guide the Agent but are verified against the current checkout so stale documentation does not silently produce invalid imports or props.
 
-Agent 规则分为基础规则、组件规则和业务规则。CLI 只负责产生稳定骨架；最终组件选择、路由、状态和交互由 Agent 根据目标代码库完成。
+An optional adapter makes repeated mappings explicit and repeatable. In the first release the Agent reads and verifies it; a standalone adapter validator is reserved for a later version. It does not replace repository inspection, and it is not required for first use.
 
-## 安全边界
+## Context pipeline
 
-- Figma PAT 只从环境变量或本地环境文件读取。
-- 日志和错误信息不得输出 Token。
-- 公开仓库不携带真实业务设计稿 URL、私有 Registry 或内部组件映射。
-- 可选的组件注释映射只能通过使用者显式配置的 URL 加载。
+### Repository inspection
 
-## 验证
+`figma-ai-coder inspect` statically discovers:
 
-每次发布前至少运行：
+- framework, package manager, and workspace boundaries
+- style and token sources
+- likely component files and installed component packages
+- token and style source candidates
+- repository-defined validation command names
 
-```bash
-pnpm typecheck
-pnpm test:run
-pnpm build
+The result is a candidate index, not generated code. The Agent must confirm important candidates in source before using them.
+
+Inspection is bounded: it excludes dependencies, generated output, VCS data, secrets, oversized files, and symlinks outside the workspace. It does not import project configuration or execute scripts.
+
+### Design context
+
+`figma-ai-coder context` converts a selected Figma node through the shared extraction pipeline:
+
+```text
+Figma REST response
+→ simplified design nodes
+→ normalized component tree
+→ layout/style/token interpretation
+→ semantic HTML + manifest + diagnostics
 ```
 
-集成测试需要显式设置 `FIGMA_PAT` 和 `FIGMA_URL`，默认不会访问网络。
+The manifest preserves information that plain HTML cannot express reliably, including Figma node IDs, instance names, variants, component properties, text overrides, nested instances, token references, and unresolved assets.
+
+Figma text, names, plugin data, annotations, and remote adapter content are untrusted data. They are never interpreted as Agent instructions.
+The generated `design.html` is reference-only and carries a restrictive Content Security Policy; read it as evidence rather than deploying or executing it as application code.
+
+## State and ownership
+
+```text
+.figma-ai-coder/
+├── config.json                  user-owned
+├── adapter.json                 optional, user-owned
+├── rules/                       user-owned
+├── .gitignore                   created only when absent
+├── cache/                       reserved for regenerable indexes
+└── runs/<run-id>/               generated per operation
+    ├── design.html
+    ├── manifest.json
+    └── diagnostics.json
+```
+
+`init` and future template updates create missing templates but never overwrite user-owned files. Generated directories are ignored by the nested `.gitignore`. The caller gives each context operation a distinct empty run directory so concurrent Agent tasks do not share mutable output.
+
+Stable source code and checked-in instructions remain the truth source. Generated manifests carry a schema version and can be rebuilt from the current repository and Figma node.
+
+## Mapping precedence
+
+The Agent uses this order:
+
+1. applicable repository instructions such as `AGENTS.md` and `CLAUDE.md`
+2. checked-in company/project rules and adapter mappings
+3. current source exports and usages, which validate whether those mappings remain usable
+4. explicitly labeled AI inference
+5. native framework or HTML elements
+
+When a higher-level rule conflicts with current code evidence, the Agent reports the stale or contradictory rule. It must not hide the conflict by inventing an API.
+
+## Internal/public separation
+
+The public release is generated from an internal source repository, but public-specific product identity, Agent entry points, project templates, and documentation live in the open-source overlay.
+
+The internal package name, registry, private component rules, private tokens, and platform-specific flows are not changed to satisfy the public workflow. Shared conversion behavior may only evolve through backward-compatible additions with internal regression coverage.
+
+The external component adapter belongs to the consuming repository. It is not copied back into the public package or uploaded by default.
+
+## Validation layers
+
+Release validation should cover:
+
+- schema and template validation for the Codex Skill and Claude command
+- fixture repositories for React and Vue component/token discovery
+- semantic context fixtures preserving instance metadata
+- refusal to scan secrets or traverse outside the workspace
+- initialization idempotence and preservation of existing project files
+- package-installed smoke tests for `init`, `inspect`, `context`, and `doctor`
+- generated implementation checks through representative typecheck/test/build commands
+
+Live Figma integration tests require explicit credentials and URLs; ordinary tests do not access the network.

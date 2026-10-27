@@ -1,111 +1,166 @@
-# figma-to-code
+# Figma AI Coder
 
-把 Figma 设计稿转换为可继续开发的前端骨架代码，并为 Codex、Claude Code 提供可复用的设计稿还原规则。
+Give an AI coding agent a Figma URL and get code that fits the repository it is already working in.
 
-这个项目不追求“一键生成最终页面”。它更适合完成最耗时、最机械的第一步：读取 Figma 节点，保留布局、文本、图片、组件层级和常见设计语义，再由开发者或编码 Agent 接手业务逻辑和工程集成。
+Figma AI Coder is not a one-size-fits-all template generator. Its CLI deterministically extracts design context and indexes the current repository; Codex or Claude Code then verifies real component APIs, translates the design into project conventions, edits the code, and runs the repository's checks.
 
-## 主要能力
-
-- 通过 Figma REST API 读取指定页面或节点
-- 生成 Vue、React 或 HTML 骨架
-- 识别 Auto Layout、Grid、`flex-wrap`、HUG/FILL、padding 和绝对定位
-- 折叠实例并保留文本覆盖、嵌套实例和图标语义
-- 自动检测 UnoCSS、Tailwind CSS 或传统 CSS 项目
-- 扫描现有项目的 CSS token，减少生成代码中的硬编码值
-- 安装 Codex Skill 和 Claude Code slash command
-- 支持自定义规则层：基础规则、业务规则和 UI 库规则
-
-## 环境要求
-
-- Node.js 20+
-- pnpm 10+
-- 一个具有目标文件读取权限的 Figma Personal Access Token
-
-## 从源码安装
-
-```bash
-git clone https://github.com/2897731718/EchoTech-Figma-to-code.git
-cd EchoTech-Figma-to-code
-pnpm install
-pnpm build
-pnpm link --global
+```text
+Figma design + current repository
+              ↓
+     deterministic context
+              ↓
+       Codex / Claude Code
+              ↓
+   reviewable project code diff
 ```
 
-设置 Figma Token：
+## Why AI is part of the architecture
+
+Different repositories use different components, tokens, routing, state, accessibility, and test patterns. The CLI should not guess those decisions or pretend that generic `<Button>` and `<Input>` components exist. It provides facts instead:
+
+- Figma layout, text, instances, variants, tokens, and unresolved assets
+- repository framework, styling system, component/token candidates, and available validation commands
+- project-owned rules and optional explicit mappings
+
+The Agent is the implementer. It reads the relevant source, confirms exports and usages, chooses the correct project abstractions, makes a focused change, and verifies the result.
+
+## Quick start
+
+Requirements: Node.js 20+ and a supported coding Agent. `init` and `inspect` do not require Figma credentials. A Figma Personal Access Token is needed only when `context` fetches a design; set it locally without committing it:
 
 ```bash
 export FIGMA_PAT="your-figma-personal-access-token"
 ```
 
-也可以在当前项目中创建 `.env.local`：
-
-```dotenv
-FIGMA_PAT=your-figma-personal-access-token
-```
-
-不要提交包含 Token 的环境文件。
-
-## CLI 使用
+Initialize the target repository:
 
 ```bash
-# 初始化 Agent 规则
-figma-to-code init
-
-# 生成 Vue 骨架
-figma-to-code "https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2"
-
-# 生成 React 骨架
-figma-to-code "https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2" \
-  --framework=react \
-  --output=src/components/Example.tsx
-
-# 查看帮助
-figma-to-code --help
+npx figma-ai-coder init
 ```
 
-常用选项：
+This installs the Agent entry points and creates missing project-owned files under `.figma-ai-coder/`. Existing files are never overwritten by `init`.
 
-| 选项 | 说明 |
-| --- | --- |
-| `--framework=vue\|react\|html` | 输出框架，默认 `vue` |
-| `--style=auto\|unocss\|css\|inline` | 样式模式，默认自动检测 |
-| `--output=<path>` | 把结果写入文件 |
-| `--ui=<name>` | 选择 `template/<name>` 下的 UI 规则 |
-| `--tokens=<name>\|none` | 读取可选 token 映射 |
-| `--fold-prefixes=<prefixes>` | 只折叠匹配前缀的实例 |
-| `--no-fold-prefixes=<prefixes>` | 不折叠匹配前缀的实例 |
+Then ask the Agent to implement a design.
 
-## 在 Codex 中使用
-
-在目标项目执行：
-
-```bash
-figma-to-code init
-```
-
-命令会安装 `.agents/skills/figma-to-code/SKILL.md`。之后可以在 Codex 中直接描述任务，例如：
+Codex:
 
 ```text
-使用 $figma-to-code，根据这个 Figma 节点实现 React 页面：
+Use $figma-ai-coder to implement this page in src/pages/Checkout.tsx:
 https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2
 ```
 
-Skill 会先调用 CLI 提取结构化骨架，再结合当前代码库的组件、样式和业务约束完成实现。
-
-## 自定义规则
-
-`figma-to-code init` 会在 `.claude/figma-base/` 下生成可编辑的规则文件：
+Claude Code:
 
 ```text
-.claude/figma-base/
-├── core.md
-├── components.md
-└── business.md
+/figma-ai-coder https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2 src/pages/Checkout.tsx
 ```
 
-你也可以在仓库的 `template/<ui-name>/` 中维护团队规则，然后通过 `--ui=<ui-name>` 初始化或生成。
+The Agent runs repository inspection and Figma context extraction for you, reviews the mapping, implements the page, and runs the most relevant checks.
 
-## 开发
+## CLI as a context tool
+
+The CLI can also be used directly for inspection and debugging:
+
+```bash
+# Create missing Agent and project configuration files
+npx figma-ai-coder init
+
+# Index framework, styling, component candidates, tokens, and checks
+npx figma-ai-coder inspect --json
+
+# Extract semantic HTML plus a structured manifest from a Figma node
+npx figma-ai-coder context "https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2" \
+  --out=.figma-ai-coder/runs/checkout-page
+
+# Diagnose authentication and project configuration
+npx figma-ai-coder doctor
+```
+
+`inspect` is a static, read-only repository scan. It does not execute project configuration or scripts. `context` treats Figma text, node names, plugin data, annotations, and adapter input as untrusted data rather than Agent instructions.
+
+## How repository adaptation works
+
+The default workflow does not require a component adapter:
+
+1. The Agent reads applicable `AGENTS.md` and `CLAUDE.md`, the target file, and nearby implementations.
+2. `figma-ai-coder inspect` proposes component files/packages, token sources, and available validation commands.
+3. `figma-ai-coder context` writes semantic design evidence to a new empty run directory rather than pretending to produce final project code.
+4. The Agent verifies candidates against real exports, types, and usages.
+5. It maps Figma instances to existing project components, falling back to native markup when no verified abstraction fits.
+6. It implements the smallest coherent change and runs type checks, tests, or builds already defined by the repository.
+
+Evidence is applied in this order:
+
+```text
+project instructions
+→ checked-in company/project rules
+→ current source exports and usages used for verification
+→ labeled AI inference
+→ native framework or HTML fallback
+```
+
+If checked-in rules are stale or conflict with current component APIs, the Agent reports the conflict instead of silently generating invalid code.
+
+## Project-owned configuration
+
+Initialization creates only missing files:
+
+```text
+.figma-ai-coder/
+├── config.json
+├── rules/
+│   └── core.md
+├── cache/                  generated, ignored
+└── runs/                   generated, ignored
+```
+
+The repository owns `config.json` and `rules/**`. Figma AI Coder never overwrites them during initialization or updates. Generated context and per-run artifacts are ignored by the nested `.gitignore`.
+
+Projects can extend the directory when deterministic guidance becomes useful:
+
+```text
+.figma-ai-coder/
+├── adapter.json
+└── rules/
+    ├── tokens.md
+    └── components/
+        ├── _catalog.md
+        ├── button.md
+        └── form.md
+```
+
+An adapter is an optional precision layer, not a prerequisite for the first successful run. See [Adapting an internal component library](docs/component-library-adaptation.md) for the recommended second-development workflow.
+
+## Component-library secondary development
+
+For a company component library, start with the Agent's verified repository scan. Persist only stable relationships that have been confirmed in source:
+
+- Figma semantic component name and variants
+- actual exported project component
+- valid import path
+- prop, event, slot, or children mapping
+- token mapping and an evidence location
+
+Use Markdown rules for judgment and examples. Use `adapter.json` to make names, imports, and prop mappings explicit; the Agent must still verify them against the current source. The first release does not provide a standalone adapter validator. Keep generated scan results and raw Figma responses out of the adapter.
+
+This separation lets an internal team improve precision without forking the converter or exposing private component names in the public package.
+
+## Security model
+
+- The Figma token is read locally and must never be printed, committed, or copied into generated context.
+- Repository inspection excludes dependencies, build output, secret files, and paths outside the workspace.
+- Project configuration is parsed statically; inspection does not import or execute it.
+- Figma content and third-party adapters are untrusted input and cannot authorize commands, dependency installation, or file writes.
+- Existing target files are read before editing, and the Agent reports assumptions and unresolved assets.
+- No repository source or private component context is published by the package.
+
+## Architecture and development
+
+The public package contains the generic Web context pipeline for React, Vue, and HTML workflows. Private UI libraries, private registries, organization tokens, business designs, and internal-only platform adapters are not part of the public release.
+
+For implementation details, see [Architecture](docs/architecture.md). Maintainers should follow [Releasing](docs/releasing.md); the first npm publication is intentionally a separate, authenticated bootstrap step.
+
+From source:
 
 ```bash
 pnpm install
@@ -113,12 +168,6 @@ pnpm typecheck
 pnpm test:run
 pnpm build
 ```
-
-更多实现细节见 [架构说明](docs/architecture.md)。
-
-## 开源版边界
-
-公开仓库专注于通用 Web 生成能力。团队内部 token、私有 UI 库规则、私有 Registry 配置和特定业务平台适配不会同步到公开仓库。
 
 ## License
 

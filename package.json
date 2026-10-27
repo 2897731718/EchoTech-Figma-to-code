@@ -1,7 +1,7 @@
 {
-  "name": "figma-to-code",
-  "version": "0.9.2",
-  "description": "Convert Figma designs to code using REST API with PAT authentication",
+  "name": "figma-ai-coder",
+  "version": "0.1.0",
+  "description": "AI-first Figma-to-code context tooling for Codex, Claude Code, and existing component libraries",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "figma-to-code": "dist/bin/cli.js"
+    "figma-ai-coder": "dist/bin/cli.js"
   },
   "files": [
     "dist",
@@ -35,8 +35,11 @@
   },
   "keywords": [
     "figma",
+    "ai",
+    "codex",
+    "claude-code",
     "design-to-code",
-    "rest-api",
+    "component-library",
     "code-generation"
   ],
   "author": "",
@@ -57,6 +60,9 @@
   },
   "dependencies": {},
   "packageManager": "pnpm@10.17.0+sha512.fce8a3dd29a4ed2ec566fb53efbb04d8c44a0f05bc6f24a73046910fb9c3ce7afa35a0980500668fa3573345bd644644fa98338fa168235c80f4aa17aa17fbef",
+  "engines": {
+    "node": ">=20"
+  },
   "homepage": "https://github.com/2897731718/EchoTech-Figma-to-code#readme",
   "bugs": {
     "url": "https://github.com/2897731718/EchoTech-Figma-to-code/issues"

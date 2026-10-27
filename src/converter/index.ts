@@ -15,6 +15,7 @@ import { createStyleConverter } from './styles/converter-factory'
 import { setHexToTokenMap } from './unocss/mappings'
 import { buildComponentTree, simplifyNode, parseI18nKey, todoIconNames, isLayoutContainer } from './tree-builder'
 import type { InstanceFoldingOptions } from './tree-builder'
+import { createConversionContext, type ConversionContextV1 } from './context'
 
 export interface ConvertOptions {
   fileKey: string
@@ -28,6 +29,8 @@ export interface ConvertOptions {
   noFoldPrefixes?: string[]
   /** 预加载的 token 映射（variableId → CSS 变量名），用于颜色输出 */
   preloadedTokenMap?: Map<string, string>
+  /** 额外返回供 AI 消费的版本化上下文；默认关闭以保持旧输出契约 */
+  includeContext?: boolean
 }
 
 export interface InstanceComponent {
@@ -40,6 +43,8 @@ export interface ConvertResult {
   styles: Record<string, string>
   /** 骨架中识别到的 INSTANCE 组件列表，可用于递归生成子组件 */
   instanceComponents: InstanceComponent[]
+  /** opt-in 的 AI 上下文协议；仅 includeContext=true 时存在 */
+  context?: ConversionContextV1
 }
 
 function findNodeById(nodes: Node[], nodeId: string): Node | null {
@@ -292,7 +297,7 @@ export async function convertFigmaToCode(
     pluginData: 'shared'
   })
 
-  console.error('[figma-to-code] 文件数据获取完成')
+  console.error('[figma-ai-coder] 文件数据获取完成')
 
   const nodeMap = buildNodeMap([fileData.document])
 
@@ -303,7 +308,7 @@ export async function convertFigmaToCode(
     if (!targetNode) {
       // ids 参数可能导致节点不在返回的子树中（如组件库中的 componentId），
       // 尝试不带 ids 重新获取完整文件
-      console.error(`[figma-to-code] 节点 ${options.nodeId} 未在子树中找到，尝试获取完整文件...`)
+      console.error(`[figma-ai-coder] 节点 ${options.nodeId} 未在子树中找到，尝试获取完整文件...`)
       const fullFileData = await client.getFile(options.fileKey, { pluginData: 'shared' })
       targetNode = findNodeById([fullFileData.document], options.nodeId) || undefined
       if (targetNode) {
@@ -326,7 +331,7 @@ export async function convertFigmaToCode(
     throw new Error('No target node found')
   }
 
-  console.error(`[figma-to-code] 节点: ${targetNode.name} (${targetNode.type})`)
+  console.error(`[figma-ai-coder] 节点: ${targetNode.name} (${targetNode.type})`)
 
   const framework = options.framework ?? 'html'
   const styleFormat = options.styleFormat ?? 'css'
@@ -353,7 +358,7 @@ export async function convertFigmaToCode(
     if (i18nJson) {
       const parsed = JSON.parse(i18nJson) as Record<string, string>
       i18nMap = new Map(Object.entries(parsed))
-      console.error(`[figma-to-code] i18n 变量映射: ${i18nMap.size} 个`)
+      console.error(`[figma-ai-coder] i18n 变量映射: ${i18nMap.size} 个`)
     }
   } catch {
     // 无 i18n 插件数据，正常降级
@@ -372,7 +377,7 @@ export async function convertFigmaToCode(
           variableMap.set(id, cssVarName)
         }
       }
-      console.error(`[figma-to-code] 插件变量映射: ${parsed ? Object.keys(parsed).length : 0} 个`)
+      console.error(`[figma-ai-coder] 插件变量映射: ${parsed ? Object.keys(parsed).length : 0} 个`)
     }
   } catch {
     // 无 variable_exporter 插件数据，正常降级
@@ -445,12 +450,12 @@ export async function convertFigmaToCode(
 
   const instanceComponents = collectInstances(componentTree)
   const code = generator.generate(componentTree, styles)
-  console.error(`[figma-to-code] 骨架生成完成，共 ${instanceComponents.length} 个子组件`)
+  console.error(`[figma-ai-coder] 骨架生成完成，共 ${instanceComponents.length} 个子组件`)
 
   // 输出需要手动修改的图标汇总
   if (todoIconNames.length > 0) {
     const uniqueIcons = [...new Set(todoIconNames)]
-    console.error(`\n[figma-to-code] ⚠️ 需手动修改的图标 (${uniqueIcons.length}个)：`)
+    console.error(`\n[figma-ai-coder] ⚠️ 需手动修改的图标 (${uniqueIcons.length}个)：`)
     uniqueIcons.forEach(name => {
       console.error(`  - icon-todo--${name}`)
     })
@@ -462,6 +467,17 @@ export async function convertFigmaToCode(
   return {
     code,
     styles,
-    instanceComponents
+    instanceComponents,
+    ...(options.includeContext
+      ? {
+          context: createConversionContext({
+            componentTree,
+            framework,
+            styleFormat,
+            code,
+            styles,
+          })
+        }
+      : {})
   }
 }

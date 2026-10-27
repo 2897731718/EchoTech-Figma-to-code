@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    name: 'figma-to-code',
+    name: 'figma-ai-coder',
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     coverage: {
