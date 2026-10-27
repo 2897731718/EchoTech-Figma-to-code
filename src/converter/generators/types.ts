@@ -1,0 +1,66 @@
+export type Framework = 'html' | 'vue' | 'react'
+export type StyleFormat = 'css' | 'unocss' | 'inline'
+
+export interface GeneratorOptions {
+  framework: Framework
+  styleFormat: StyleFormat
+  indent?: number
+}
+
+export interface ComponentNode {
+  tag: string
+  /** 矢量图标容器折叠标记（generator 渲染为图标占位） */
+  isVectorIcon?: boolean
+  /** 提取的图标名（kebab-case） */
+  iconName?: string
+  className?: string
+  style?: Record<string, string>
+  children?: ComponentNode[]
+  text?: string
+  i18nKey?: string
+  props?: Record<string, string>
+  /** Figma 原始节点类型（FRAME, TEXT, BOOLEAN_OPERATION 等） */
+  figmaType?: string
+  /** Figma 原始节点名称 */
+  figmaName?: string
+  nodeId?: string
+  componentId?: string
+  /** 结构化样式（从 Figma 节点直接提取） */
+  parsedStyles?: import('./style-parser').ParsedStyles
+  /** INSTANCE 组件属性（变体、文字、开关等，折叠时提取） */
+  componentProps?: Record<string, { type: string; value: string | boolean }>
+  /** Figma 节点语义名（例如带有设计系统前缀的节点名），INSTANCE/COMPONENT 节点保留 */
+  semanticName?: string
+  /** 是否 flex-1（layoutGrow=1） */
+  isExpanded?: boolean
+  /** 横滑容器（子元素总宽超过容器宽） */
+  isScrollContainer?: boolean
+  /** 横滑容器的滚动轴（目前只支持 'horizontal'） */
+  scrollAxis?: 'horizontal' | 'vertical'
+  /** Figma auto-layout wrap（用于识别 GridView） */
+  layoutWrap?: 'NO_WRAP' | 'WRAP'
+  /** 来自可选组件注释配置的文档链接 */
+  componentDocLink?: string
+  /** 折叠前从 INSTANCE 子节点抽取的 TEXT 内容（设计师的直接覆盖，不走 componentProperties） */
+  instanceTextOverrides?: Array<{ name?: string; text: string }>
+  /** 折叠前从 INSTANCE 子节点抽取的嵌套组件（如 NavigationBar 内的 SearchBar） */
+  nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }>
+  /** 是 INSTANCE/COMPONENT 但未在 annotation_config 命中映射（tag 走 Figma 节点名降级） */
+  isUnmappedInstance?: boolean
+}
+
+export interface StyleConverter {
+  convert(css: Record<string, string>, nodeId: string): {
+    className?: string
+    style?: Record<string, string>
+    classes?: string[]
+  }
+}
+
+export interface CodeGenerator {
+  generate(
+    componentTree: ComponentNode,
+    styles: Record<string, string>,
+    tokens?: Record<string, { kind: string; value: string | Record<string, string> }>
+  ): string
+}

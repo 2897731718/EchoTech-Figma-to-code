@@ -1,0 +1,772 @@
+import type { Node } from '../api/types'
+import type { ComponentNode, StyleConverter } from './generators/types'
+import type { ParsedStyles, ParsedLayout, ParsedPadding, ParsedBorderRadius, ParsedBorder, ParsedText } from './generators/style-parser'
+import { convertNodeToCSS } from './index'
+import { convertPaintToColor, type VariableMap } from './colors'
+import { convertFillsToBackgroundColor } from './styles'
+import type { FrameNode } from './layout'
+import type { AnnotationPlatform } from './annotation'
+
+// ─── 组件类型判断 ─────────────────────────────────────────────────────────────
+
+/** 组件类型集合：INSTANCE（实例）、COMPONENT（主组件）、COMPONENT_SET（变体集） */
+const COMPONENT_TYPES = new Set(['INSTANCE', 'COMPONENT', 'COMPONENT_SET'])
+
+/** 判断节点是否是组件（INSTANCE / COMPONENT / COMPONENT_SET） */
+export function isComponentNode(node: Node): boolean {
+  return COMPONENT_TYPES.has(node.type)
+}
+
+/** 布局容器类型集合：支持 auto-layout 的节点类型 */
+const LAYOUT_CONTAINER_TYPES = new Set(['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE'])
+
+/** 判断节点是否是布局容器（可应用 auto-layout） */
+export function isLayoutContainer(node: Node): boolean {
+  return LAYOUT_CONTAINER_TYPES.has(node.type)
+}
+
+// ─── INSTANCE 智能折叠 ───────────────────────────────────────────────────────
+
+/**
+ * @deprecated 已移除 40% 阈值自动检测，改用配置 + 结构兜底方案
+ * 保留此函数以兼容旧 API，始终返回空数组
+ */
+export function detectBaseComponentPrefixes(_root: Node): string[] {
+  return []
+}
+
+/** 判断 INSTANCE 节点的 children 中是否嵌套了其他 INSTANCE（穿透 FRAME/GROUP） */
+function hasNestedInstance(node: Node): boolean {
+  for (const child of (node.children ?? [])) {
+    if (child.visible === false) continue
+    if (isComponentNode(child)) return true
+    if ((child.type === 'FRAME' || child.type === 'GROUP') && hasNestedInstance(child)) return true
+  }
+  return false
+}
+
+/** INSTANCE 折叠配置 */
+export interface InstanceFoldingOptions {
+  /** 白名单：匹配的组件前缀会折叠（如 ["💙"]） */
+  foldPrefixes?: string[]
+  /** 黑名单：匹配的组件前缀不折叠（如 ["👻"]），优先级高于白名单和结构兜底 */
+  noFoldPrefixes?: string[]
+}
+
+/**
+ * 判断 INSTANCE 是否应该折叠（剥离 children）：
+ * 优先级：黑名单 > 白名单 > 结构兜底（叶子 INSTANCE）
+ */
+function shouldFoldInstance(node: Node, options?: InstanceFoldingOptions): boolean {
+  const name = node.name?.trim() ?? ''
+
+  // 1. 黑名单 → 不折叠（优先级最高）
+  if (options?.noFoldPrefixes?.length) {
+    if (options.noFoldPrefixes.some(p => name.startsWith(p))) {
+      return false
+    }
+  }
+
+  // 2. 白名单 → 仅「叶子 INSTANCE」折叠
+  //    容器型组件（内部嵌套了其他 INSTANCE，如 NavBar/SearchBar/Tabs）保留 children，
+  //    因为内部结构是翻译依据：slot 归属、子组件映射、业务文案缺一不可
+  if (options?.foldPrefixes?.length) {
+    if (options.foldPrefixes.some(p => name.startsWith(p))) {
+      return !hasNestedInstance(node)
+    }
+  }
+
+  // 3. 结构兜底：叶子 INSTANCE（无嵌套组件）→ 折叠
+  return !hasNestedInstance(node)
+}
+
+// ─── 矢量形状类型集合（图标路径、布尔运算、基础形状） ─────────────────────────
+const VECTOR_SHAPE_TYPES = new Set([
+  'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON'
+])
+
+/**
+ * 判断节点是否为矢量图标容器：
+ * 所有可见子节点均为矢量形状（VECTOR/BOOLEAN_OPERATION/STAR 等）
+ */
+function isVectorIconContainer(node: Node): boolean {
+  const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
+  if (visibleChildren.length === 0) return false
+  return visibleChildren.every(c => VECTOR_SHAPE_TYPES.has(c.type))
+}
+
+/**
+ * 检测图标名是否有效（kebab-case 且不含中文等异常字符）
+ */
+function isValidIconName(name: string): boolean {
+  // 包含中文 → 无效
+  if (/[\u4e00-\u9fa5]/.test(name)) return false
+  // 包含日文假名 → 无效
+  if (/[\u3040-\u30ff]/.test(name)) return false
+  // 常见占位符词汇 → 无效
+  const placeholderWords = ['title', 'icon', 'placeholder', 'image', 'img', 'bg', 'background']
+  if (placeholderWords.includes(name.toLowerCase())) return false
+  // 太短且无连字符（如 bg、abc）→ 可能是占位符，标记为待确认
+  if (name.length <= 3 && !name.includes('-')) return false
+  // 正常 kebab-case
+  return true
+}
+
+/** 收集需要手动修改的图标名（用于 CLI 汇总输出） */
+export const todoIconNames: string[] = []
+
+/**
+ * 从节点名提取图标名，转为 kebab-case
+ * 例如：
+ *   "IconArrowRight" → "arrow-right"
+ *   "icon/arrow-right" → "arrow-right"
+ *   "Arrow Right" → "arrow-right"
+ *   "💙 Icon/Close" → "close"
+ *   "后续可编辑" → "icon-todo--后续可编辑"（异常图标名，添加前缀标记）
+ */
+export function extractIconName(nodeName: string): string {
+  const originalName = nodeName.trim()
+
+  let name = originalName
+    // 移除 emoji 前缀
+    .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+/u, '')
+    // 移除常见前缀
+    .replace(/^(icon[_\-/\s]*)/i, '')
+    // 移除路径分隔符前的内容（取最后一段）
+    .split(/[/\\]/).pop() || ''
+
+  // PascalCase/camelCase → kebab-case
+  name = name
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
+    // 空格、下划线 → 短横线
+    .replace(/[\s_]+/g, '-')
+    // 清理多余短横线
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  if (!name) return 'icon'
+
+  // 检测图标名是否有效，无效则添加 icon-todo-- 前缀
+  if (!isValidIconName(name)) {
+    const todoName = `icon-todo--${name}`
+    todoIconNames.push(name)
+    return todoName
+  }
+
+  return name
+}
+
+/**
+ * 判断节点是否为横滑容器：
+ * 横向 flex 布局 + 子元素总宽超过容器宽
+ */
+function isScrollContainer(node: Node): boolean {
+  if (node.layoutMode !== 'HORIZONTAL' || !node.absoluteBoundingBox) return false
+
+  const parentWidth = node.absoluteBoundingBox.width
+  const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
+  if (visibleChildren.length < 3 || parentWidth < 200) return false
+
+  const gap = node.itemSpacing ?? 0
+  let totalChildWidth = 0
+  for (const child of visibleChildren) {
+    if (child.absoluteBoundingBox) totalChildWidth += child.absoluteBoundingBox.width
+  }
+  totalChildWidth += (visibleChildren.length - 1) * gap
+
+  return totalChildWidth > parentWidth
+}
+
+// ─── 策略二：预处理 - 折叠透传容器 ────────────────────────────────────────────
+
+/**
+ * 判断节点是否为透传容器：
+ * 单子节点 + 无视觉样式（无填充/描边/圆角/padding）
+ */
+function isPassthrough(node: Node): boolean {
+  // INSTANCE/COMPONENT 有语义意义，不作为透传容器折叠
+  if (isComponentNode(node)) return false
+
+  const visibleChildren = (node.children ?? []).filter(c => c.visible !== false)
+  if (visibleChildren.length !== 1) return false
+
+  const hasFills = (node.fills ?? []).some(f => f.visible !== false)
+  if (hasFills) return false
+
+  const hasStrokes = (node.strokes ?? []).some(s => s.visible !== false)
+  if (hasStrokes) return false
+
+  if ((node.cornerRadius ?? 0) > 0) return false
+  if ((node.paddingTop ?? 0) > 0) return false
+  if ((node.paddingRight ?? 0) > 0) return false
+  if ((node.paddingBottom ?? 0) > 0) return false
+  if ((node.paddingLeft ?? 0) > 0) return false
+
+  return true
+}
+
+/**
+ * 递归收集节点子树里的嵌套 INSTANCE/COMPONENT，用于折叠时保留子组件信息。
+ * 返回：组件名、slot 位置（从父节点名推断）、componentId
+ */
+function collectNestedInstances(
+  nodes: Node[],
+  parentSlot?: string
+): Array<{ name: string; slot?: string; componentId?: string }> {
+  const result: Array<{ name: string; slot?: string; componentId?: string }> = []
+  for (const n of nodes) {
+    if (n.visible === false) continue
+
+    // 推断 slot 位置：从节点名中提取 Left/Center/Right 等
+    let slot = parentSlot
+    if (n.name) {
+      const slotMatch = n.name.match(/\/\s*(Left|Center|Right|Top|Bottom|Header|Footer)$/i)
+      if (slotMatch) slot = slotMatch[1].toLowerCase()
+    }
+
+    if (isComponentNode(n)) {
+      const name = n.name?.trim() ?? ''
+      if (name) {
+        result.push({
+          name,
+          slot,
+          componentId: n.componentId
+        })
+      }
+    }
+
+    // 继续递归（即使当前是 INSTANCE，也要看它的子节点可能有更深的嵌套）
+    if (n.children) {
+      result.push(...collectNestedInstances(n.children, slot))
+    }
+  }
+  return result
+}
+
+/**
+ * 递归抓取节点子树里所有可见 TEXT 的 characters，用于 INSTANCE 折叠前保留文本。
+ * 空串、不可见节点跳过；根据父容器 layoutMode 按视觉位置排序。
+ */
+function collectTextOverrides(nodes: Node[], layoutMode?: string): Array<{ name?: string; text: string }> {
+  const result: Array<{ name?: string; text: string }> = []
+  // 根据父容器布局方向排序：HORIZONTAL 先 x 后 y，其他先 y 后 x
+  const sorted = [...nodes].sort((a, b) => {
+    const ax = a.absoluteBoundingBox?.x ?? 0
+    const bx = b.absoluteBoundingBox?.x ?? 0
+    const ay = a.absoluteBoundingBox?.y ?? 0
+    const by = b.absoluteBoundingBox?.y ?? 0
+    if (layoutMode === 'HORIZONTAL') {
+      if (ax !== bx) return ax - bx
+      return ay - by
+    }
+    if (ay !== by) return ay - by
+    return ax - bx
+  })
+  for (const n of sorted) {
+    if (n.visible === false) continue
+    if (n.type === 'TEXT') {
+      const text = (n.characters ?? '').trim()
+      if (text.length > 0) {
+        result.push(n.name ? { name: n.name, text } : { text })
+      }
+    }
+    if (n.children) {
+      const childLayout = (n as FrameNode).layoutMode
+      result.push(...collectTextOverrides(n.children, childLayout))
+    }
+  }
+  return result
+}
+
+/**
+ * 简化 Figma 节点树：
+ * - 折叠基础组件 INSTANCE（配置前缀 > 自动检测 emoji > 叶子 INSTANCE 兜底）
+ * - 折叠矢量图标容器（children 全是 VECTOR）
+ * - 折叠透传容器（单子节点且无视觉样式）
+ */
+export function simplifyNode(
+  node: Node,
+  isRoot = false,
+  mappedComponentIds?: Set<string>,
+  foldingOptions?: InstanceFoldingOptions
+): Node {
+  // 策略一：INSTANCE 折叠（精确映射 > 黑名单/白名单 > 结构兜底）
+  // 折叠前保留文本覆盖与嵌套组件信息，供生成器恢复 props / slots。
+  if (!isRoot && isComponentNode(node)) {
+    const lookupId = node.componentId ?? node.id
+    const explicitlyExpanded = foldingOptions?.noFoldPrefixes?.some(prefix => node.name?.trim().startsWith(prefix)) ?? false
+    const isMapped = !explicitlyExpanded && (mappedComponentIds?.has(lookupId) ?? false)
+
+    if (isMapped || shouldFoldInstance(node, foldingOptions)) {
+      const textOverrides = collectTextOverrides(node.children ?? [], node.layoutMode)
+      const nestedInstances = collectNestedInstances(node.children ?? [])
+      const folded = {
+        ...node,
+        children: []
+      } as Node & {
+        _textOverrides?: Array<{ name?: string; text: string }>
+        _nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }>
+      }
+
+      if (textOverrides.length > 0) folded._textOverrides = textOverrides
+      if (nestedInstances.length > 0) folded._nestedInstances = nestedInstances
+      return folded
+    }
+  }
+
+  // 策略 1.5：矢量图标容器折叠（children 全是 VECTOR 等形状 → 视为图标，折叠子节点）
+  // 输出 data-type="ICON" 语义标记，翻译时替换为 <img> 或图标组件
+  if (!isRoot && isVectorIconContainer(node)) {
+    return { ...node, children: [], _iconContainer: true } as Node
+  }
+
+  // 先递归简化 children
+  const simplifiedChildren = (node.children ?? [])
+    .filter(c => c.visible !== false)
+    .map(c => simplifyNode(c, false, mappedComponentIds, foldingOptions))
+
+  const nodeWithChildren = { ...node, children: simplifiedChildren }
+
+  // 策略二：折叠透传容器（简化后只剩一个子节点，根节点不折叠）
+  if (!isRoot && simplifiedChildren.length === 1 && isPassthrough(nodeWithChildren)) {
+    return simplifiedChildren[0]
+  }
+
+  return nodeWithChildren
+}
+
+// ─── 构建组件树 ───────────────────────────────────────────────────────────────
+
+/** Variable name → i18n key: "09_Product/成交(Sold)" → "09_Product.Sold" */
+export function parseI18nKey(variableName: string): string {
+  const parts = variableName.split('/')
+  const keyParts = parts.map(part => {
+    const match = part.match(/\(([^)]+)\)$/)
+    return match ? match[1] : part
+  })
+  return keyParts.join('.')
+}
+
+export function buildComponentTree(
+  node: Node,
+  styleConverter: StyleConverter,
+  parent: Node | undefined,
+  nodeMap: Map<string, Node>,
+  variableMap?: VariableMap,
+  i18nMap?: Map<string, string>,
+  componentClassNameMap?: Map<string, AnnotationPlatform>
+): ComponentNode | null {
+  if (node.visible === false) return null
+
+  const css = convertNodeToCSS(node, parent, nodeMap, variableMap)
+
+  // 策略三：宽度自适应检测（先处理 CSS）
+  let autoWidth = false
+  if (parent && css['width'] && css['height']) {
+    const parentContentWidth = getContentWidth(parent)
+    const nodeWidth = node.absoluteBoundingBox?.width
+    if (parentContentWidth && nodeWidth && Math.abs(nodeWidth - parentContentWidth) <= 1) {
+      delete css['width']
+      autoWidth = true
+      if (node.type !== 'TEXT') {
+        delete css['height']
+      }
+    }
+  }
+
+  const styleResult = styleConverter.convert(css, node.id)
+
+  const parsed = extractParsedStyles(node, parent, variableMap)
+  // 同步宽度自适应到 parsedStyles
+  if (autoWidth) {
+    delete parsed.width
+    if (node.type !== 'TEXT') delete parsed.height
+  }
+
+  const scrollContainer = isScrollContainer(node)
+  const isIconContainer = (node as Node & { _iconContainer?: boolean })._iconContainer === true
+  const annotation = node.componentId ? componentClassNameMap?.get(node.componentId) : undefined
+  const textOverrides = (node as Node & { _textOverrides?: Array<{ name?: string; text: string }> })._textOverrides
+  const nestedInstances = (node as Node & { _nestedInstances?: Array<{ name: string; slot?: string; componentId?: string }> })._nestedInstances
+
+  // 处理 COMPONENT 节点的变体属性（从 name 解析）
+  let componentProps: Record<string, { type: string; value: string | boolean }> | undefined
+  if (node.componentProperties) {
+    componentProps = extractComponentProps(node.componentProperties)
+  }
+  // COMPONENT 节点：如果 name 包含 =，解析变体属性
+  if (node.type === 'COMPONENT' && node.name?.includes('=')) {
+    const variantProps = parseVariantName(node.name)
+    if (variantProps) {
+      if (!componentProps) componentProps = {}
+      for (const [key, value] of Object.entries(variantProps)) {
+        componentProps[key] = { type: 'VARIANT', value }
+      }
+    }
+  }
+
+  const componentNode: ComponentNode = {
+    tag: getTagForNode(node, parent, componentClassNameMap),
+    nodeId: node.id,
+    props: {},
+    // 保留 Figma 原始节点类型和名称（矢量图标容器标记为 ICON）
+    figmaType: isIconContainer ? 'ICON' : node.type,
+    figmaName: node.name,
+    // INSTANCE 用 componentId，COMPONENT / COMPONENT_SET 用自身 id（方便递归生成）
+    ...(node.componentId
+      ? { componentId: node.componentId }
+      : (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') ? { componentId: node.id } : {}),
+    parsedStyles: parsed,
+    ...(componentProps ? { componentProps } : {}),
+    // 语义名：组件节点保留 Figma 节点名
+    ...(isComponentNode(node) && node.name ? { semanticName: node.name } : {}),
+    // flex-1：layoutGrow=1 或 FILL 时标记
+    ...(node.layoutGrow === 1 || node.layoutSizingHorizontal === 'FILL' || node.layoutSizingVertical === 'FILL'
+      ? { isExpanded: true } : {}),
+    // 矢量图标容器标记 + 从节点名推导出的图标名
+    ...(isIconContainer ? { isVectorIcon: true, iconName: extractIconName(node.name) } : {}),
+    // 横滑容器标记
+    ...(scrollContainer ? { isScrollContainer: true, scrollAxis: 'horizontal' as const } : {}),
+    // auto-layout wrap（GridView 识别依据）
+    ...(node.layoutWrap === 'WRAP' ? { layoutWrap: 'WRAP' as const } : {}),
+    // 组件文档链接（供生成器输出 import / 注释）
+    ...(annotation?.docLink ? { componentDocLink: annotation.docLink } : {}),
+    // 折叠前抓到的直接文本覆盖（设计师直接改子节点文字的场景）
+    ...(textOverrides && textOverrides.length > 0 ? { instanceTextOverrides: textOverrides } : {}),
+    // 折叠前抓到的嵌套 INSTANCE（如 NavigationBar 内的 SearchBar）
+    ...(nestedInstances && nestedInstances.length > 0 ? { nestedInstances } : {}),
+    // 未映射组件：tag 是由 nameToPascalCase 降级得来，需要提示 IDE AI 查阅项目规范
+    ...((isComponentNode(node) && node.componentId && !annotation?.className)
+      ? { isUnmappedInstance: true as const } : {})
+  }
+
+  if (styleResult.className) {
+    componentNode.className = styleResult.className
+  }
+
+  if (styleResult.classes && styleResult.classes.length > 0) {
+    componentNode.className = styleResult.classes.join(' ')
+  }
+
+  // FILL → flex-1
+  if (componentNode.isExpanded) {
+    componentNode.className = componentNode.className
+      ? `${componentNode.className} flex-1`
+      : 'flex-1'
+  }
+
+  if (styleResult.style && Object.keys(styleResult.style).length > 0) {
+    componentNode.style = styleResult.style
+  }
+
+  if (node.type === 'TEXT') {
+    componentNode.text = node.characters || ''
+    // i18n: 如果文本绑定了变量，解析出 i18n key
+    const charBinding = (node.boundVariables as Record<string, unknown>)?.characters as { id: string } | undefined
+    if (charBinding && i18nMap) {
+      const variableName = i18nMap.get(charBinding.id)
+      if (variableName) {
+        componentNode.i18nKey = parseI18nKey(variableName)
+      }
+    }
+  } else if (node.children && node.children.length > 0) {
+    componentNode.children = []
+    // 非 Auto Layout 容器：按视觉位置排序（先 y 后 x），使输出顺序与视觉一致
+    const frameNode = node as FrameNode
+    const isAutoLayout = frameNode.layoutMode && frameNode.layoutMode !== 'NONE'
+    const sortedChildren = isAutoLayout
+      ? node.children
+      : [...node.children].sort((a, b) => {
+          const ay = a.absoluteBoundingBox?.y ?? 0
+          const by = b.absoluteBoundingBox?.y ?? 0
+          if (ay !== by) return ay - by
+          const ax = a.absoluteBoundingBox?.x ?? 0
+          const bx = b.absoluteBoundingBox?.x ?? 0
+          return ax - bx
+        })
+    for (const child of sortedChildren) {
+      const childNode = buildComponentTree(child, styleConverter, node, nodeMap, variableMap, i18nMap, componentClassNameMap)
+      if (childNode) {
+        componentNode.children.push(childNode)
+      }
+    }
+  }
+
+  return componentNode
+}
+
+// ─── 从 Figma 节点直接提取结构化样式（移动端生成器使用） ─────────────────────
+
+export function extractParsedStyles(
+  node: Node,
+  parent: Node | undefined,
+  variableMap?: VariableMap
+): ParsedStyles {
+  const result: ParsedStyles = {}
+
+  if (node.visible === false) return result
+
+  // 透明度
+  if (node.opacity !== undefined && node.opacity < 1) {
+    result.opacity = node.opacity
+  }
+
+  // 布局（Auto Layout）
+  const fn = node as FrameNode
+  if (fn.layoutMode && fn.layoutMode !== 'NONE') {
+    const directionMap: Record<string, ParsedLayout['direction']> = {
+      VERTICAL: 'column', HORIZONTAL: 'row', GRID: 'grid'
+    }
+    const layout: ParsedLayout = {
+      direction: directionMap[fn.layoutMode] ?? 'row'
+    }
+    if (typeof fn.itemSpacing === 'number' && fn.itemSpacing > 0) {
+      layout.gap = fn.itemSpacing
+    }
+    if (fn.primaryAxisAlignItems) {
+      const map: Record<string, ParsedLayout['justify']> = {
+        MIN: 'start', CENTER: 'center', MAX: 'end', SPACE_BETWEEN: 'space-between'
+      }
+      layout.justify = map[fn.primaryAxisAlignItems]
+    }
+    if (fn.counterAxisAlignItems) {
+      const map: Record<string, ParsedLayout['align']> = {
+        MIN: 'start', CENTER: 'center', MAX: 'end', BASELINE: 'baseline'
+      }
+      layout.align = map[fn.counterAxisAlignItems]
+    }
+    result.layout = layout
+  }
+
+  // Padding
+  const pt = fn.paddingTop ?? 0
+  const pr = fn.paddingRight ?? 0
+  const pb = fn.paddingBottom ?? 0
+  const pl = fn.paddingLeft ?? 0
+  if (pt > 0 || pr > 0 || pb > 0 || pl > 0) {
+    result.padding = { top: pt, right: pr, bottom: pb, left: pl }
+  }
+
+  // 尺寸：HUG/FILL 不输出固定尺寸，FIXED 输出
+  if (node.layoutGrow !== 1 && node.absoluteBoundingBox) {
+    if (node.layoutSizingHorizontal === 'FIXED') {
+      result.width = node.absoluteBoundingBox.width
+    }
+    if (node.layoutSizingVertical === 'FIXED') {
+      result.height = node.absoluteBoundingBox.height
+    }
+  }
+
+  // 背景色（非 TEXT 节点）
+  if (node.type !== 'TEXT') {
+    const bgColor = convertFillsToBackgroundColor(node.fills, variableMap)
+    if (bgColor) result.backgroundColor = bgColor
+  }
+
+  // 圆角
+  if (node.rectangleCornerRadii) {
+    const [tl, tr, br, bl] = node.rectangleCornerRadii
+    if (tl > 0 || tr > 0 || br > 0 || bl > 0) {
+      result.borderRadius = { topLeft: tl, topRight: tr, bottomRight: br, bottomLeft: bl }
+    }
+  } else if (node.cornerRadius && node.cornerRadius > 0) {
+    const r = node.cornerRadius
+    result.borderRadius = { topLeft: r, topRight: r, bottomRight: r, bottomLeft: r }
+  }
+
+  // 边框
+  if (node.strokes && node.strokes.length > 0 && node.strokeWeight) {
+    const visibleStrokes = node.strokes.filter(s => s.visible !== false)
+    if (visibleStrokes.length > 0) {
+      const strokeColor = convertPaintToColor(visibleStrokes[0], variableMap)
+      if (strokeColor) {
+        result.border = { width: node.strokeWeight, color: strokeColor, style: 'solid' }
+      }
+    }
+  }
+
+  // 定位
+  const isInAutoLayoutFlow =
+    parent &&
+    (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL' || parent.layoutMode === 'GRID') &&
+    node.layoutPositioning !== 'ABSOLUTE'
+
+  if (node.layoutPositioning === 'ABSOLUTE' || (node.constraints && parent && !isInAutoLayoutFlow)) {
+    result.position = 'absolute'
+    const transform = node.relativeTransform
+    if (transform && transform.length >= 2 && parent?.absoluteBoundingBox) {
+      result.positionOffsets = {
+        left: `${transform[0][2]}px`,
+        top: `${transform[1][2]}px`
+      }
+    }
+  }
+
+  // 文本样式（仅 TEXT 节点）
+  if (node.type === 'TEXT') {
+    const text: ParsedText = {}
+    let hasText = false
+
+    // 文字颜色来自 fills
+    const visibleFills = (node.fills ?? []).filter(f => f.visible !== false)
+    const solidFill = visibleFills.find(f => f.type === 'SOLID')
+    if (solidFill) {
+      const color = convertPaintToColor(solidFill, variableMap)
+      if (color) { text.color = color; hasText = true }
+    }
+
+    if (node.style) {
+      const s = node.style
+      if (s.fontSize) { text.fontSize = s.fontSize; hasText = true }
+      if (s.fontWeight) { text.fontWeight = s.fontWeight; hasText = true }
+      if (s.lineHeightPx && s.lineHeightUnit === 'PIXELS') { text.lineHeight = s.lineHeightPx; hasText = true }
+      if (s.letterSpacing !== undefined) {
+        const ls = typeof s.letterSpacing === 'number' ? s.letterSpacing : (s.letterSpacing as { value: number }).value
+        if (ls !== 0) { text.letterSpacing = ls; hasText = true }
+      }
+      if (s.textAlignHorizontal) {
+        const alignMap: Record<string, string> = { LEFT: 'left', CENTER: 'center', RIGHT: 'right', JUSTIFIED: 'justify' }
+        const align = alignMap[s.textAlignHorizontal]
+        if (align) { text.textAlign = align; hasText = true }
+      }
+      if (s.fontFamily) { text.fontFamily = s.fontFamily; hasText = true }
+      if (s.italic) { text.fontStyle = 'italic'; hasText = true }
+      if (s.textDecoration && s.textDecoration !== 'NONE') {
+        text.textDecoration = s.textDecoration === 'UNDERLINE' ? 'underline' : 'line-through'
+        hasText = true
+      }
+    }
+
+    if (hasText) result.text = text
+  }
+
+  return result
+}
+
+// ─── 工具函数 ─────────────────────────────────────────────────────────────────
+
+/** 计算父节点的内容宽度（扣除 padding） */
+function getContentWidth(parent: Node): number | null {
+  const box = parent.absoluteBoundingBox
+  if (!box) return null
+  const pl = parent.paddingLeft ?? 0
+  const pr = parent.paddingRight ?? 0
+  return box.width - pl - pr
+}
+
+function getTagForNode(node: Node, parent?: Node, componentClassNameMap?: Map<string, AnnotationPlatform>): string {
+  switch (node.type) {
+    case 'TEXT':
+      return 'span'
+    case 'COMPONENT':
+      // COMPONENT 节点用专门的函数处理变体情况
+      return getComponentTag(node, parent, componentClassNameMap)
+    case 'INSTANCE':
+      // 优先用 component annotation config 精确映射
+      if (node.componentId && componentClassNameMap) {
+        const annotation = componentClassNameMap.get(node.componentId)
+        if (annotation?.className) return annotation.className
+      }
+      return nameToPascalCase(node.name)
+    case 'FRAME':
+    case 'GROUP':
+    case 'RECTANGLE':
+    case 'ELLIPSE':
+    case 'VECTOR':
+    default:
+      return 'div'
+  }
+}
+
+/** 从 INSTANCE 的 componentProperties 中提取有意义的属性（变体、文字、开关） */
+function extractComponentProps(
+  properties: Record<string, { type: string; value: string | boolean }>
+): Record<string, { type: string; value: string | boolean }> {
+  const result: Record<string, { type: string; value: string | boolean }> = {}
+
+  for (const [rawKey, prop] of Object.entries(properties)) {
+    // 清理 key 名：去掉 Figma 的 hash 后缀（如 "Text#81524:0" → "Text"）
+    const cleanKey = rawKey.replace(/#\d+:\d+$/, '').trim()
+
+    // 只保留有意义的属性
+    if (prop.type === 'VARIANT') {
+      result[cleanKey] = { type: 'VARIANT', value: prop.value }
+    } else if (prop.type === 'TEXT' && typeof prop.value === 'string' && prop.value.length > 0) {
+      result[cleanKey] = { type: 'TEXT', value: prop.value }
+    } else if (prop.type === 'BOOLEAN' && prop.value === true) {
+      // 只记录开启的开关
+      result[cleanKey] = { type: 'BOOLEAN', value: true }
+    }
+  }
+
+  return result
+}
+
+/**
+ * 解析 COMPONENT 变体名，提取变体属性
+ * 例如: "Type=ISLANDS, Size=Small" → { Type: "ISLANDS", Size: "Small" }
+ */
+function parseVariantName(name: string): Record<string, string> | null {
+  if (!name.includes('=')) return null
+
+  const result: Record<string, string> = {}
+  // 按逗号分割，处理 "Type=ISLANDS, Size=Small" 格式
+  const parts = name.split(/,\s*/)
+  for (const part of parts) {
+    const eqIndex = part.indexOf('=')
+    if (eqIndex > 0) {
+      const key = part.slice(0, eqIndex).trim()
+      const value = part.slice(eqIndex + 1).trim()
+      if (key && value) {
+        result[key] = value
+      }
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : null
+}
+
+/**
+ * 获取 COMPONENT 节点的标签名
+ * - 如果是变体（name 包含 =），用父级 COMPONENT_SET 的名字
+ * - 否则用自己的名字
+ */
+function getComponentTag(node: Node, parent?: Node, componentClassNameMap?: Map<string, AnnotationPlatform>): string {
+  // 优先用 component annotation config 精确映射
+  if (node.componentId && componentClassNameMap) {
+    const annotation = componentClassNameMap.get(node.componentId)
+    if (annotation?.className) return annotation.className
+  }
+
+  const name = node.name || ''
+
+  // 检查是否是变体（name 包含 =）
+  if (name.includes('=')) {
+    // 优先用父级 COMPONENT_SET 的名字
+    if (parent?.type === 'COMPONENT_SET' && parent.name) {
+      return nameToPascalCase(parent.name)
+    }
+    // 兜底：用第一个属性的 key 作为标签名的一部分
+    const firstKey = name.split('=')[0].split(',')[0].trim()
+    return nameToPascalCase(firstKey) || 'div'
+  }
+
+  // 普通组件，直接用名字
+  return nameToPascalCase(name)
+}
+
+/** 将 Figma 节点名称转为 PascalCase 组件标签，例如 "icon/arrow-right" → "IconArrowRight" */
+function nameToPascalCase(name: string): string {
+  const result = name
+    .split(/[\/\-_\s.]+/)
+    .filter(Boolean)
+    .filter(part => !/^\d+$/.test(part))
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')
+    .replace(/[^A-Za-z0-9]/g, '')
+
+  if (!result || /^\d/.test(result)) return 'div'
+  return result
+}
