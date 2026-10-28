@@ -1,5 +1,7 @@
 # Figma AI Coder
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 Give an AI coding agent a Figma URL and get code that fits the repository it is already working in.
 
 Figma AI Coder is not a one-size-fits-all template generator. Its CLI deterministically extracts design context and indexes the current repository; Codex or Claude Code then verifies real component APIs, translates the design into project conventions, edits the code, and runs the repository's checks.
@@ -14,6 +16,17 @@ Figma design + current repository
    reviewable project code diff
 ```
 
+## What it does — and what it does not do
+
+Figma AI Coder is a repository-aware implementation workflow, not a one-click design exporter:
+
+- **It does** extract structured design evidence, inspect the target repository, install Agent instructions, and help the Agent implement and verify a focused code change.
+- **It does** reuse existing components, tokens, routing, styling, and validation commands when the repository proves they are available.
+- **It does not** upload the repository, publish private component information, or silently execute project configuration during inspection.
+- **It does not** promise pixel-perfect production code without review. Missing assets, ambiguous behavior, stale rules, and unsupported component mappings are reported for the developer to resolve.
+
+The result is normal source code in the target repository. The developer reviews the diff and keeps control of what is committed.
+
 ## Why AI is part of the architecture
 
 Different repositories use different components, tokens, routing, state, accessibility, and test patterns. The CLI should not guess those decisions or pretend that generic `<Button>` and `<Input>` components exist. It provides facts instead:
@@ -23,6 +36,15 @@ Different repositories use different components, tokens, routing, state, accessi
 - project-owned rules and optional explicit mappings
 
 The Agent is the implementer. It reads the relevant source, confirms exports and usages, chooses the correct project abstractions, makes a focused change, and verifies the result.
+
+## End-to-end workflow
+
+1. Run `npx figma-ai-coder init` once in the target repository.
+2. Give Codex or Claude Code a Figma design URL and the intended target file or feature.
+3. The Agent reads repository instructions, runs `inspect`, and verifies candidate components and tokens against real source.
+4. The Agent runs `context` with a new output directory to obtain semantic HTML, a structured manifest, and diagnostics for the selected Figma node.
+5. The Agent maps the evidence to the repository's actual abstractions, edits the code, and runs the repository's existing checks.
+6. The developer reviews the resulting diff, assumptions, unresolved assets, and validation output before committing.
 
 ## Quick start
 

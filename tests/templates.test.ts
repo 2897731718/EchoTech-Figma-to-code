@@ -86,13 +86,20 @@ describe('public project templates', () => {
 describe('public documentation contract', () => {
   it('describes the AI/CLI boundary and component-library extension path', () => {
     const readme = readSource('README.md')
+    const chineseReadme = readSource('README.zh-CN.md')
     const architecture = readSource('docs/architecture.md')
     const adaptation = readSource('docs/component-library-adaptation.md')
 
+    expect(readme).toContain('[简体中文](./README.zh-CN.md)')
+    expect(chineseReadme).toContain('[English](./README.md)')
     expect(readme).toContain('The Agent is the implementer')
+    expect(readme).toContain('What it does — and what it does not do')
     expect(readme).toContain('figma-ai-coder inspect')
     expect(readme).toContain('figma-ai-coder context')
     expect(readme).toContain('adapter.json')
+    expect(chineseReadme).toContain('AI Agent 才是代码实现者')
+    expect(chineseReadme).toContain('内部组件库适配')
+    expect(chineseReadme).toContain('adapter.json')
     expect(architecture).toContain('Deterministic CLI')
     expect(architecture).toContain('Internal/public separation')
     expect(adaptation).toContain('Start without an adapter')
