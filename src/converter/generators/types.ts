@@ -7,6 +7,23 @@ export interface GeneratorOptions {
   indent?: number
 }
 
+export interface TokenBindingEvidence {
+  source: 'node' | 'fill' | 'stroke'
+  property: string
+  variableId: string
+  resolved: boolean
+  resolvedName?: string
+  index?: number
+}
+
+export interface ImageFillEvidence {
+  fillIndex: number
+  imageRef?: string
+  imageHash?: string
+  scaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE'
+  resolved: false
+}
+
 export interface ComponentNode {
   tag: string
   /** 矢量图标容器折叠标记（generator 渲染为图标占位） */
@@ -29,6 +46,12 @@ export interface ComponentNode {
   parsedStyles?: import('./style-parser').ParsedStyles
   /** INSTANCE 组件属性（变体、文字、开关等，折叠时提取） */
   componentProps?: Record<string, { type: string; value: string | boolean }>
+  /** AI 上下文使用的完整组件属性；生成器可继续使用过滤后的 componentProps */
+  componentPropsEvidence?: Record<string, { type: string; value: string | boolean }>
+  /** Figma Variable 原始绑定证据，即使本地 token 名无法解析也保留 ID */
+  tokenBindings?: TokenBindingEvidence[]
+  /** IMAGE fill 原始引用；图片仍需由项目侧解析为真实资源 */
+  imageFills?: ImageFillEvidence[]
   /** Figma 节点语义名（例如带有设计系统前缀的节点名），INSTANCE/COMPONENT 节点保留 */
   semanticName?: string
   /** 是否 flex-1（layoutGrow=1） */

@@ -83,6 +83,7 @@ export interface Node {
   effects?: Effect[]
   opacity?: number
   blendMode?: BlendMode
+  clipsContent?: boolean
 }
 
 export interface Rect {
@@ -135,6 +136,7 @@ export interface Vector {
 
 export type BlendMode =
   | 'NORMAL'
+  | 'PASS_THROUGH'
   | 'MULTIPLY'
   | 'SCREEN'
   | 'OVERLAY'

@@ -1,5 +1,10 @@
-import type { Node } from '../api/types'
-import type { ComponentNode, StyleConverter } from './generators/types'
+import type { ComponentProperty, Node, VariableAlias } from '../api/types'
+import type {
+  ComponentNode,
+  ImageFillEvidence,
+  StyleConverter,
+  TokenBindingEvidence,
+} from './generators/types'
 import type { ParsedStyles, ParsedLayout, ParsedPadding, ParsedBorderRadius, ParsedBorder, ParsedText } from './generators/style-parser'
 import { convertNodeToCSS } from './index'
 import { convertPaintToColor, type VariableMap } from './colors'
@@ -204,6 +209,31 @@ function isPassthrough(node: Node): boolean {
   if ((node.paddingBottom ?? 0) > 0) return false
   if ((node.paddingLeft ?? 0) > 0) return false
 
+  if (node.layoutMode && node.layoutMode !== 'NONE') return false
+  if (node.primaryAxisAlignItems || node.counterAxisAlignItems) return false
+  if (node.layoutSizingHorizontal === 'FIXED' || node.layoutSizingHorizontal === 'FILL') return false
+  if (node.layoutSizingVertical === 'FIXED' || node.layoutSizingVertical === 'FILL') return false
+  if (node.layoutGrow && node.layoutGrow !== 0) return false
+  if (node.layoutPositioning === 'ABSOLUTE') return false
+  if (node.constraints) return false
+  if (node.clipsContent === true) return false
+  if (node.opacity !== undefined && node.opacity !== 1) return false
+  if (node.rotation !== undefined && node.rotation !== 0) return false
+  if (node.blendMode && node.blendMode !== 'NORMAL' && node.blendMode !== 'PASS_THROUGH') return false
+  if ((node.effects ?? []).some(effect => effect.visible !== false)) return false
+  if (node.boundVariables && Object.keys(node.boundVariables).length > 0) return false
+
+  const child = visibleChildren[0]
+  if (node.absoluteBoundingBox && child.absoluteBoundingBox) {
+    const parentBox = node.absoluteBoundingBox
+    const childBox = child.absoluteBoundingBox
+    const geometryDiffers = Math.abs(parentBox.x - childBox.x) > 0.5
+      || Math.abs(parentBox.y - childBox.y) > 0.5
+      || Math.abs(parentBox.width - childBox.width) > 0.5
+      || Math.abs(parentBox.height - childBox.height) > 0.5
+    if (geometryDiffers) return false
+  }
+
   return true
 }
 
@@ -349,6 +379,65 @@ export function parseI18nKey(variableName: string): string {
   return keyParts.join('.')
 }
 
+function normalizeComponentProps(
+  properties: Record<string, ComponentProperty>
+): Record<string, { type: string; value: string | boolean }> {
+  return Object.fromEntries(
+    Object.entries(properties).map(([rawKey, property]) => [
+      rawKey.replace(/#\d+:\d+$/, '').trim(),
+      { type: property.type, value: property.value },
+    ])
+  )
+}
+
+function extractTokenBindings(node: Node, variableMap?: VariableMap): TokenBindingEvidence[] | undefined {
+  const result: TokenBindingEvidence[] = []
+
+  const append = (
+    bindings: Record<string, VariableAlias> | undefined,
+    source: TokenBindingEvidence['source'],
+    index?: number
+  ): void => {
+    for (const [property, binding] of Object.entries(bindings ?? {})) {
+      if (!binding?.id) continue
+      const resolvedName = variableMap?.get(binding.id)
+      result.push({
+        source,
+        property,
+        variableId: binding.id,
+        resolved: Boolean(resolvedName),
+        ...(resolvedName ? { resolvedName } : {}),
+        ...(index !== undefined ? { index } : {}),
+      })
+    }
+  }
+
+  append(node.boundVariables, 'node')
+  node.fills?.forEach((fill, index) => {
+    if (fill.visible !== false) append(fill.boundVariables, 'fill', index)
+  })
+  node.strokes?.forEach((stroke, index) => {
+    if (stroke.visible !== false) append(stroke.boundVariables, 'stroke', index)
+  })
+
+  return result.length > 0 ? result : undefined
+}
+
+function extractImageFills(node: Node): ImageFillEvidence[] | undefined {
+  const result: ImageFillEvidence[] = []
+  node.fills?.forEach((fill, fillIndex) => {
+    if (fill.visible === false || fill.type !== 'IMAGE') return
+    result.push({
+      fillIndex,
+      ...(fill.imageRef ? { imageRef: fill.imageRef } : {}),
+      ...(fill.imageHash ? { imageHash: fill.imageHash } : {}),
+      ...(fill.scaleMode ? { scaleMode: fill.scaleMode } : {}),
+      resolved: false,
+    })
+  })
+  return result.length > 0 ? result : undefined
+}
+
 export function buildComponentTree(
   node: Node,
   styleConverter: StyleConverter,
@@ -393,7 +482,9 @@ export function buildComponentTree(
 
   // 处理 COMPONENT 节点的变体属性（从 name 解析）
   let componentProps: Record<string, { type: string; value: string | boolean }> | undefined
+  let componentPropsEvidence: Record<string, { type: string; value: string | boolean }> | undefined
   if (node.componentProperties) {
+    componentPropsEvidence = normalizeComponentProps(node.componentProperties)
     componentProps = extractComponentProps(node.componentProperties)
   }
   // COMPONENT 节点：如果 name 包含 =，解析变体属性
@@ -401,11 +492,18 @@ export function buildComponentTree(
     const variantProps = parseVariantName(node.name)
     if (variantProps) {
       if (!componentProps) componentProps = {}
+      if (!componentPropsEvidence) componentPropsEvidence = {}
       for (const [key, value] of Object.entries(variantProps)) {
         componentProps[key] = { type: 'VARIANT', value }
+        if (!componentPropsEvidence[key]) {
+          componentPropsEvidence[key] = { type: 'VARIANT', value }
+        }
       }
     }
   }
+
+  const tokenBindings = extractTokenBindings(node, variableMap)
+  const imageFills = extractImageFills(node)
 
   const componentNode: ComponentNode = {
     tag: getTagForNode(node, parent, componentClassNameMap),
@@ -420,6 +518,9 @@ export function buildComponentTree(
       : (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') ? { componentId: node.id } : {}),
     parsedStyles: parsed,
     ...(componentProps ? { componentProps } : {}),
+    ...(componentPropsEvidence && Object.keys(componentPropsEvidence).length > 0 ? { componentPropsEvidence } : {}),
+    ...(tokenBindings ? { tokenBindings } : {}),
+    ...(imageFills ? { imageFills } : {}),
     // 语义名：组件节点保留 Figma 节点名
     ...(isComponentNode(node) && node.name ? { semanticName: node.name } : {}),
     // flex-1：layoutGrow=1 或 FILL 时标记
@@ -562,7 +663,9 @@ export function extractParsedStyles(
   // 背景色（非 TEXT 节点）
   if (node.type !== 'TEXT') {
     const bgColor = convertFillsToBackgroundColor(node.fills, variableMap)
-    if (bgColor) result.backgroundColor = bgColor
+    if (bgColor && !bgColor.startsWith('url(') && !bgColor.includes('gradient(')) {
+      result.backgroundColor = bgColor
+    }
   }
 
   // 圆角
@@ -682,14 +785,11 @@ function getTagForNode(node: Node, parent?: Node, componentClassNameMap?: Map<st
 
 /** 从 INSTANCE 的 componentProperties 中提取有意义的属性（变体、文字、开关） */
 function extractComponentProps(
-  properties: Record<string, { type: string; value: string | boolean }>
+  properties: Record<string, ComponentProperty>
 ): Record<string, { type: string; value: string | boolean }> {
   const result: Record<string, { type: string; value: string | boolean }> = {}
 
-  for (const [rawKey, prop] of Object.entries(properties)) {
-    // 清理 key 名：去掉 Figma 的 hash 后缀（如 "Text#81524:0" → "Text"）
-    const cleanKey = rawKey.replace(/#\d+:\d+$/, '').trim()
-
+  for (const [cleanKey, prop] of Object.entries(normalizeComponentProps(properties))) {
     // 只保留有意义的属性
     if (prop.type === 'VARIANT') {
       result[cleanKey] = { type: 'VARIANT', value: prop.value }

@@ -21,8 +21,9 @@ import {
 } from '../src/index'
 import { inspectProject, type ProjectInspection } from '../src/project-inspector'
 
-type AgentTarget = 'auto' | 'codex' | 'claude' | 'all'
+type AgentTarget = 'auto' | 'codex' | 'claude' | 'deepseek' | 'all'
 type ResolvedAgentTarget = Exclude<AgentTarget, 'auto'>
+type InstallAgentTarget = Exclude<ResolvedAgentTarget, 'all'>
 
 interface TextWriter {
   write(chunk: string): unknown
@@ -55,12 +56,15 @@ interface ResolvedDependencies {
 const HELP = `Figma AI Coder
 
 Usage:
-  figma-ai-coder init [--agent=auto|codex|claude|all]
+  figma-ai-coder init [--agent=auto|codex|claude|deepseek|all] [--config-only] [--json]
   figma-ai-coder inspect [--json]
   figma-ai-coder context <figma-url> --out=<directory>
   figma-ai-coder doctor [--json]
   figma-ai-coder --version
 `
+
+const FIGMA_TOKEN_DOCS = 'https://developers.figma.com/docs/rest-api/personal-access-tokens/'
+const EXAMPLE_TARGET = 'src/pages/Checkout.tsx'
 
 const REFERENCE_HTML_PREAMBLE = `<!doctype html>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
@@ -106,16 +110,18 @@ function resolveAgentTarget(target: AgentTarget, projectRoot: string): ResolvedA
     || existsSync(resolve(projectRoot, '.agents'))
   const hasClaude = existsSync(resolve(projectRoot, 'CLAUDE.md'))
     || existsSync(resolve(projectRoot, '.claude'))
+  const hasDeepSeek = existsSync(resolve(projectRoot, '.deepcode'))
 
-  if (hasCodex && hasClaude) return 'all'
+  if ([hasCodex, hasClaude, hasDeepSeek].filter(Boolean).length > 1) return 'all'
   if (hasCodex) return 'codex'
   if (hasClaude) return 'claude'
+  if (hasDeepSeek) return 'deepseek'
   return 'all'
 }
 
 function parseAgentTarget(args: string[]): AgentTarget {
   const value = optionValue(args, 'agent') ?? 'auto'
-  if (value === 'auto' || value === 'codex' || value === 'claude' || value === 'all') return value
+  if (value === 'auto' || value === 'codex' || value === 'claude' || value === 'deepseek' || value === 'all') return value
   throw new Error(`Unsupported agent target: ${value}`)
 }
 
@@ -168,14 +174,23 @@ function runInit(args: string[], dependencies: ResolvedDependencies): number {
   const projectRoot = realpathSync(resolve(dependencies.cwd()))
   const requestedTarget = parseAgentTarget(args)
   const target = resolveAgentTarget(requestedTarget, projectRoot)
+  const configOnly = args.includes('--config-only')
+  const json = args.includes('--json')
   const templateRoot = resolve(dependencies.packageRoot, 'template')
 
-  const codexSource = resolve(templateRoot, 'codex/figma-ai-coder')
-  const claudeSource = resolve(templateRoot, 'commands/figma-ai-coder.md')
+  const skillSource = resolve(templateRoot, 'skills/figma-ai-coder')
+  const claudeCommandSource = resolve(templateRoot, 'commands/figma-ai-coder.md')
   const projectTemplateRoot = resolve(templateRoot, 'project/.figma-ai-coder')
+  const installTargets: InstallAgentTarget[] = configOnly
+    ? []
+    : target === 'all'
+      ? ['codex', 'claude', 'deepseek']
+      : [target]
+  const installsPortableAgentsSkill = installTargets.includes('codex') || installTargets.includes('deepseek')
+  const installsClaude = installTargets.includes('claude')
   const requiredSources = [
-    ...(target === 'codex' || target === 'all' ? [codexSource] : []),
-    ...(target === 'claude' || target === 'all' ? [claudeSource] : []),
+    ...(installTargets.length > 0 ? [skillSource] : []),
+    ...(installsClaude ? [claudeCommandSource] : []),
     resolve(projectTemplateRoot, 'config.json'),
     resolve(projectTemplateRoot, 'rules/core.md'),
     resolve(projectTemplateRoot, 'gitignore.template'),
@@ -188,11 +203,14 @@ function runInit(args: string[], dependencies: ResolvedDependencies): number {
   const created: string[] = []
   const skipped: string[] = []
   const codexDestination = resolve(projectRoot, '.agents/skills/figma-ai-coder')
-  const claudeDestination = resolve(projectRoot, '.claude/commands/figma-ai-coder.md')
+  const claudeDestination = resolve(projectRoot, '.claude/skills/figma-ai-coder')
+  const claudeCommandDestination = resolve(projectRoot, '.claude/commands/figma-ai-coder.md')
+  const deepSeekDestination = resolve(projectRoot, '.deepcode/skills/figma-ai-coder')
   const projectStateRoot = resolve(projectRoot, '.figma-ai-coder')
   const projectDestinations = [
-    ...(target === 'codex' || target === 'all' ? [codexDestination] : []),
-    ...(target === 'claude' || target === 'all' ? [claudeDestination] : []),
+    ...(installsPortableAgentsSkill ? [codexDestination] : []),
+    ...(installsClaude ? [claudeDestination, claudeCommandDestination] : []),
+    ...(installTargets.includes('deepseek') ? [deepSeekDestination] : []),
     resolve(projectStateRoot, 'config.json'),
     resolve(projectStateRoot, 'rules/core.md'),
     resolve(projectStateRoot, '.gitignore'),
@@ -201,18 +219,32 @@ function runInit(args: string[], dependencies: ResolvedDependencies): number {
     assertSafeProjectDestination(projectRoot, destination)
   }
 
-  if (target === 'codex' || target === 'all') {
+  if (installsPortableAgentsSkill) {
     copyDirectoryIfMissing(
-      codexSource,
+      skillSource,
       codexDestination,
       created,
       skipped,
     )
   }
-  if (target === 'claude' || target === 'all') {
-    copyFileIfMissing(
-      claudeSource,
+  if (installsClaude) {
+    copyDirectoryIfMissing(
+      skillSource,
       claudeDestination,
+      created,
+      skipped,
+    )
+    copyFileIfMissing(
+      claudeCommandSource,
+      claudeCommandDestination,
+      created,
+      skipped,
+    )
+  }
+  if (installTargets.includes('deepseek')) {
+    copyDirectoryIfMissing(
+      skillSource,
+      deepSeekDestination,
       created,
       skipped,
     )
@@ -222,10 +254,47 @@ function runInit(args: string[], dependencies: ResolvedDependencies): number {
   copyFileIfMissing(resolve(projectTemplateRoot, 'rules/core.md'), resolve(projectStateRoot, 'rules/core.md'), created, skipped)
   copyFileIfMissing(resolve(projectTemplateRoot, 'gitignore.template'), resolve(projectStateRoot, '.gitignore'), created, skipped)
 
-  writeLine(dependencies.stdout, `Figma AI Coder initialized for ${target}.`)
+  const localPatDetected = hasLocalPatHint(projectRoot)
+  const result = {
+    ok: true,
+    command: 'init',
+    target,
+    configOnly,
+    created: created.map(path => displayPath(projectRoot, path)),
+    preserved: skipped.map(path => displayPath(projectRoot, path)),
+    credentials: {
+      figmaPatHintDetected: localPatDetected,
+      docs: FIGMA_TOKEN_DOCS,
+    },
+    next: {
+      requiredInput: ['figmaUrl', 'sourceTarget'],
+      exampleTarget: EXAMPLE_TARGET,
+      contextOutput: '.figma-ai-coder/runs/<run-id>/',
+      finalCodeOutput: '<user-confirmed-source-target>',
+    },
+  }
+
+  if (json) {
+    writeLine(dependencies.stdout, JSON.stringify(result, null, 2))
+    return 0
+  }
+
+  writeLine(dependencies.stdout, `Figma AI Coder initialized for ${configOnly ? 'project configuration only' : target}.`)
   for (const path of created) writeLine(dependencies.stdout, `created ${displayPath(projectRoot, path)}`)
   for (const path of skipped) writeLine(dependencies.stdout, `preserved ${displayPath(projectRoot, path)}`)
-  writeLine(dependencies.stdout, 'Figma credentials are only required when fetching design context.')
+  writeLine(dependencies.stdout)
+  if (localPatDetected) {
+    writeLine(dependencies.stdout, 'ok FIGMA_PAT configuration hint detected; its value was not printed.')
+  } else {
+    writeLine(dependencies.stdout, 'next configure FIGMA_PAT locally before fetching design context.')
+    writeLine(dependencies.stdout, `docs ${FIGMA_TOKEN_DOCS}`)
+    writeLine(dependencies.stdout, 'example export FIGMA_PAT="your-figma-personal-access-token"')
+    writeLine(dependencies.stdout, 'Never paste the token into an AI conversation or commit it to the repository.')
+  }
+  writeLine(dependencies.stdout, 'next give the Agent both a Figma URL and the final source target.')
+  writeLine(dependencies.stdout, `example target ${EXAMPLE_TARGET}`)
+  writeLine(dependencies.stdout, 'design evidence .figma-ai-coder/runs/<run-id>/')
+  writeLine(dependencies.stdout, 'final code <user-confirmed-source-target>')
   return 0
 }
 
@@ -394,24 +463,27 @@ function runDoctor(args: string[], dependencies: ResolvedDependencies): number {
     node: { ok: nodeMajor >= 20, version: process.versions.node, required: '>=20' },
     projectInspection: { ok: inspectionOk },
     templates: {
-      codex: existsSync(resolve(dependencies.packageRoot, 'template/codex/figma-ai-coder/SKILL.md')),
-      claude: existsSync(resolve(dependencies.packageRoot, 'template/commands/figma-ai-coder.md')),
+      skill: existsSync(resolve(dependencies.packageRoot, 'template/skills/figma-ai-coder/SKILL.md')),
+      claudeCommand: existsSync(resolve(dependencies.packageRoot, 'template/commands/figma-ai-coder.md')),
       project: existsSync(resolve(dependencies.packageRoot, 'template/project/.figma-ai-coder/config.json')),
     },
     credentials: {
-      localPatDetected: hasLocalPatHint(projectRoot),
+      localPatHintDetected: hasLocalPatHint(projectRoot),
+      docs: FIGMA_TOKEN_DOCS,
       note: 'macOS Keychain is checked only when design context is fetched',
     },
     installed: {
-      codex: existsSync(resolve(projectRoot, '.agents/skills/figma-ai-coder/SKILL.md')),
-      claude: existsSync(resolve(projectRoot, '.claude/commands/figma-ai-coder.md')),
+      portableAgentsProjectSkill: existsSync(resolve(projectRoot, '.agents/skills/figma-ai-coder/SKILL.md')),
+      claudeProjectSkill: existsSync(resolve(projectRoot, '.claude/skills/figma-ai-coder/SKILL.md')),
+      claudeLegacyCommand: existsSync(resolve(projectRoot, '.claude/commands/figma-ai-coder.md')),
+      deepCodeProjectSkill: existsSync(resolve(projectRoot, '.deepcode/skills/figma-ai-coder/SKILL.md')),
       projectConfig: existsSync(resolve(projectRoot, '.figma-ai-coder/config.json')),
     },
   }
   const healthy = checks.node.ok
     && checks.projectInspection.ok
-    && checks.templates.codex
-    && checks.templates.claude
+    && checks.templates.skill
+    && checks.templates.claudeCommand
     && checks.templates.project
 
   if (args.includes('--json')) {
@@ -419,8 +491,13 @@ function runDoctor(args: string[], dependencies: ResolvedDependencies): number {
   } else {
     writeLine(dependencies.stdout, `${checks.node.ok ? 'ok' : 'error'} Node.js ${checks.node.version} (requires ${checks.node.required})`)
     writeLine(dependencies.stdout, `${checks.projectInspection.ok ? 'ok' : 'error'} static project inspection`)
-    writeLine(dependencies.stdout, `${checks.templates.codex && checks.templates.claude && checks.templates.project ? 'ok' : 'error'} package templates`)
-    writeLine(dependencies.stdout, `${checks.credentials.localPatDetected ? 'ok' : 'info'} local Figma PAT ${checks.credentials.localPatDetected ? 'detected' : 'not detected'}`)
+    writeLine(dependencies.stdout, `${checks.templates.skill && checks.templates.claudeCommand && checks.templates.project ? 'ok' : 'error'} package templates`)
+    writeLine(dependencies.stdout, `${checks.credentials.localPatHintDetected ? 'ok' : 'info'} environment/.env.local Figma PAT hint ${checks.credentials.localPatHintDetected ? 'detected' : 'not detected'}`)
+    if (!checks.credentials.localPatHintDetected) writeLine(dependencies.stdout, `docs ${FIGMA_TOKEN_DOCS}`)
+    writeLine(dependencies.stdout, `${checks.installed.portableAgentsProjectSkill ? 'ok' : 'info'} Codex / DeepSeek Harness project Skill ${checks.installed.portableAgentsProjectSkill ? 'installed' : 'not installed'}`)
+    writeLine(dependencies.stdout, `${checks.installed.claudeProjectSkill ? 'ok' : 'info'} Claude Code project Skill ${checks.installed.claudeProjectSkill ? 'installed' : 'not installed'}`)
+    writeLine(dependencies.stdout, `${checks.installed.deepCodeProjectSkill ? 'ok' : 'info'} Deep Code project Skill ${checks.installed.deepCodeProjectSkill ? 'installed' : 'not installed'}`)
+    writeLine(dependencies.stdout, `${checks.installed.projectConfig ? 'ok' : 'info'} project configuration ${checks.installed.projectConfig ? 'installed' : 'not installed'}`)
   }
   return healthy ? 0 : 1
 }

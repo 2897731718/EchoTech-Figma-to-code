@@ -4,14 +4,14 @@
 
 Give an AI coding agent a Figma URL and get code that fits the repository it is already working in.
 
-Figma AI Coder is not a one-size-fits-all template generator. Its CLI deterministically extracts design context and indexes the current repository; Codex or Claude Code then verifies real component APIs, translates the design into project conventions, edits the code, and runs the repository's checks.
+Figma AI Coder is not a one-size-fits-all template generator. Its CLI deterministically extracts design context and indexes the current repository; Codex, Claude Code, Deep Code, or DeepSeek Harness then verifies real component APIs, translates the design into project conventions, edits the code, and runs the repository's checks.
 
 ```text
 Figma design + current repository
               ↓
      deterministic context
               ↓
-       Codex / Claude Code
+ Codex / Claude Code / DeepSeek Agent
               ↓
    reviewable project code diff
 ```
@@ -40,7 +40,7 @@ The Agent is the implementer. It reads the relevant source, confirms exports and
 ## End-to-end workflow
 
 1. Run `npx figma-ai-coder init` once in the target repository.
-2. Give Codex or Claude Code a Figma design URL and the intended target file or feature.
+2. Give the coding Agent both a Figma design URL and the intended target file or feature.
 3. The Agent reads repository instructions, runs `inspect`, and verifies candidate components and tokens against real source.
 4. The Agent runs `context` with a new output directory to obtain semantic HTML, a structured manifest, and diagnostics for the selected Figma node.
 5. The Agent maps the evidence to the repository's actual abstractions, edits the code, and runs the repository's existing checks.
@@ -48,19 +48,29 @@ The Agent is the implementer. It reads the relevant source, confirms exports and
 
 ## Quick start
 
-Requirements: Node.js 20+ and a supported coding Agent. `init` and `inspect` do not require Figma credentials. A Figma Personal Access Token is needed only when `context` fetches a design; set it locally without committing it:
+Requirements: Node.js 20+ and a supported coding Agent. `init` and `inspect` do not require Figma credentials. A [Figma Personal Access Token](https://developers.figma.com/docs/rest-api/personal-access-tokens/) with Figma file-content read access is needed only when `context` fetches a design; set it locally without committing it or pasting it into an AI conversation:
 
 ```bash
 export FIGMA_PAT="your-figma-personal-access-token"
 ```
 
-Initialize the target repository:
+Install the project Skill for the Agent you use:
 
 ```bash
-npx figma-ai-coder init
+# Codex
+npx figma-ai-coder@latest init --agent=codex
+
+# Claude Code
+npx figma-ai-coder@latest init --agent=claude
+
+# Deep Code powered by DeepSeek
+npx figma-ai-coder@latest init --agent=deepseek
+
+# Install every project entry point
+npx figma-ai-coder@latest init --agent=all
 ```
 
-This installs the Agent entry points and creates missing project-owned files under `.figma-ai-coder/`. Existing files are never overwritten by `init`.
+Codex receives `.agents/skills/figma-ai-coder/`, Claude Code receives `.claude/skills/figma-ai-coder/`, and Deep Code receives `.deepcode/skills/figma-ai-coder/`. The DeepSeek target also installs the portable `.agents/skills/` entry used by DeepSeek Harness. If a marketplace or plugin already installed the Skill, run `npx figma-ai-coder@latest init --config-only` to create only the project-owned configuration. Existing files are never overwritten by `init`.
 
 Then ask the Agent to implement a design.
 
@@ -77,6 +87,17 @@ Claude Code:
 /figma-ai-coder https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2 src/pages/Checkout.tsx
 ```
 
+Deep Code / DeepSeek Harness:
+
+```text
+Use figma-ai-coder to implement this design.
+Figma URL: https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2
+Final code target: src/pages/Checkout.tsx
+Inspect the repository and propose the component mapping before editing.
+```
+
+The Figma URL and final source target are required inputs. If either is missing or ambiguous, the Skill asks before editing. Design evidence is generated under `.figma-ai-coder/runs/<run-id>/`; final application code is written only to the confirmed source target.
+
 The Agent runs repository inspection and Figma context extraction for you, reviews the mapping, implements the page, and runs the most relevant checks.
 
 ## CLI as a context tool
@@ -85,7 +106,10 @@ The CLI can also be used directly for inspection and debugging:
 
 ```bash
 # Create missing Agent and project configuration files
-npx figma-ai-coder init
+npx figma-ai-coder init --agent=codex
+
+# Create only project configuration when the Skill came from a plugin/marketplace
+npx figma-ai-coder init --config-only
 
 # Index framework, styling, component candidates, tokens, and checks
 npx figma-ai-coder inspect --json
@@ -94,7 +118,7 @@ npx figma-ai-coder inspect --json
 npx figma-ai-coder context "https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2" \
   --out=.figma-ai-coder/runs/checkout-page
 
-# Diagnose authentication and project configuration
+# Diagnose authentication, Agent Skills, and project configuration
 npx figma-ai-coder doctor
 ```
 

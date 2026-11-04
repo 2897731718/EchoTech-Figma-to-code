@@ -30,7 +30,21 @@ function createFileResponse(): FileResponse {
           'State#1:0': { type: 'VARIANT', value: 'primary' },
           'Label#2:0': { type: 'TEXT', value: 'Continue' },
           'Enabled#3:0': { type: 'BOOLEAN', value: true },
+          'Disabled#4:0': { type: 'BOOLEAN', value: false },
+          'Empty label#5:0': { type: 'TEXT', value: '' },
+          'Leading icon#6:0': { type: 'INSTANCE_SWAP', value: 'component:icon' },
         },
+        fills: [
+          { type: 'IMAGE', imageRef: 'image-ref-a', scaleMode: 'FILL' },
+          { type: 'IMAGE', imageRef: 'image-ref-b', scaleMode: 'FIT' },
+          {
+            type: 'SOLID',
+            color: { r: 0, g: 0.478, b: 1 },
+            boundVariables: {
+              color: { type: 'VARIABLE_ALIAS', id: 'VariableID:color:1' },
+            },
+          },
+        ],
         children: [
           {
             id: '2:2',
@@ -128,8 +142,22 @@ describe('ConversionContextV1', () => {
           State: { type: 'VARIANT', value: 'primary' },
           Label: { type: 'TEXT', value: 'Continue' },
           Enabled: { type: 'BOOLEAN', value: true },
+          Disabled: { type: 'BOOLEAN', value: false },
+          'Empty label': { type: 'TEXT', value: '' },
+          'Leading icon': { type: 'INSTANCE_SWAP', value: 'component:icon' },
         },
       },
+      tokenBindings: [{
+        source: 'fill',
+        property: 'color',
+        variableId: 'VariableID:color:1',
+        resolved: false,
+        index: 2,
+      }],
+      imageAssets: [
+        { fillIndex: 0, imageRef: 'image-ref-a', scaleMode: 'FILL', resolved: false },
+        { fillIndex: 1, imageRef: 'image-ref-b', scaleMode: 'FIT', resolved: false },
+      ],
       textOverrides: [{ name: 'Label', text: 'Continue' }],
     })
 
@@ -138,6 +166,10 @@ describe('ConversionContextV1', () => {
         nodeId: '2:1',
         componentId: 'component:button',
         unmapped: true,
+        imageAssets: expect.arrayContaining([
+          expect.objectContaining({ imageRef: 'image-ref-a' }),
+          expect.objectContaining({ imageRef: 'image-ref-b' }),
+        ]),
       }),
     ])
     expect(result.context?.diagnostics).toEqual([
@@ -146,6 +178,20 @@ describe('ConversionContextV1', () => {
         severity: 'warning',
         message: 'No project component mapping is available for this design component.',
         nodeId: '2:1',
+      },
+      {
+        code: 'unresolved-image',
+        severity: 'warning',
+        message: 'Image fill requires project asset resolution.',
+        nodeId: '2:1',
+        fillIndex: 0,
+      },
+      {
+        code: 'unresolved-image',
+        severity: 'warning',
+        message: 'Image fill requires project asset resolution.',
+        nodeId: '2:1',
+        fillIndex: 1,
       },
     ])
 
@@ -168,6 +214,8 @@ describe('ConversionContextV1', () => {
     }
 
     expect(parsed.designTree.children?.[1]?.text).toBe(INJECTION_TEXT)
+    expect(result.context?.preview.code).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+    expect(result.context?.preview.code).not.toContain('<script>alert(1)</script>')
     expect(Object.keys(parsed)).toEqual([
       'schemaVersion',
       'source',

@@ -37,6 +37,25 @@ describe('Code Generators', () => {
       expect(code).toContain('<style>')
       expect(code).toContain('.node-123')
     })
+
+    it('escapes design text, i18n comments, and generated attributes', () => {
+      const tree: ComponentNode = {
+        tag: 'span',
+        className: 'copy" onclick="alert(1)',
+        style: { content: '"unsafe"' },
+        i18nKey: 'copy--><style>body{display:none}</style>',
+        text: '<b>Unsafe & copy</b>',
+      }
+
+      const code = new HTMLGenerator().generate(tree, {})
+
+      expect(code).toContain('class="copy&quot; onclick=&quot;alert(1)"')
+      expect(code).toContain('style="content: &quot;unsafe&quot;"')
+      expect(code).toContain('<!-- i18n: copy&#45;&#45;&gt;&lt;style&gt;body{display:none}&lt;/style&gt; -->')
+      expect(code).toContain('&lt;b&gt;Unsafe &amp; copy&lt;/b&gt;')
+      expect(code).not.toContain('<b>Unsafe')
+      expect(code).not.toContain('--><style>')
+    })
   })
 
   describe('VueGenerator', () => {

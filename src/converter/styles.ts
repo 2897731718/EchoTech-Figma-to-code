@@ -30,7 +30,7 @@ export function convertFillsToBackgroundColor(fills: Paint[] | undefined, variab
 
   const imageFill = visibleFills.find((fill) => fill.type === 'IMAGE')
   if (imageFill) {
-    return `url(figma-image:${imageFill.imageHash ?? 'unknown'})`
+    return `url(figma-image:${imageFill.imageRef ?? imageFill.imageHash ?? 'unknown'})`
   }
 
   return null

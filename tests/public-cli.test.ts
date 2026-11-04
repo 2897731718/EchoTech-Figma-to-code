@@ -38,11 +38,11 @@ function captureWriter(): { writer: { write(chunk: string): void }; read(): stri
 
 function createPackageTemplates(packageRoot: string): void {
   write(
-    resolve(packageRoot, 'template/codex/figma-ai-coder/SKILL.md'),
+    resolve(packageRoot, 'template/skills/figma-ai-coder/SKILL.md'),
     '---\nname: figma-ai-coder\n---\n',
   )
   write(
-    resolve(packageRoot, 'template/codex/figma-ai-coder/references/guide.md'),
+    resolve(packageRoot, 'template/skills/figma-ai-coder/references/guide.md'),
     '# Guide\n',
   )
   write(
@@ -172,11 +172,14 @@ describe('public CLI init', () => {
     expect(stderr.read()).toBe('')
     expect(existsSync(resolve(projectRoot, '.agents/skills/figma-ai-coder/SKILL.md'))).toBe(true)
     expect(existsSync(resolve(projectRoot, '.agents/skills/figma-ai-coder/references/guide.md'))).toBe(true)
+    expect(existsSync(resolve(projectRoot, '.claude/skills/figma-ai-coder/SKILL.md'))).toBe(true)
     expect(existsSync(resolve(projectRoot, '.claude/commands/figma-ai-coder.md'))).toBe(true)
+    expect(existsSync(resolve(projectRoot, '.deepcode/skills/figma-ai-coder/SKILL.md'))).toBe(true)
     expect(existsSync(resolve(projectRoot, '.figma-ai-coder/config.json'))).toBe(true)
     expect(existsSync(resolve(projectRoot, '.figma-ai-coder/rules/core.md'))).toBe(true)
     expect(existsSync(resolve(projectRoot, '.figma-ai-coder/.gitignore'))).toBe(true)
-    expect(stdout.read()).toContain('credentials are only required')
+    expect(stdout.read()).toContain('developers.figma.com/docs/rest-api/personal-access-tokens')
+    expect(stdout.read()).toContain('final code <user-confirmed-source-target>')
 
     write(resolve(projectRoot, '.agents/skills/figma-ai-coder/SKILL.md'), 'user-owned skill\n')
     write(resolve(projectRoot, '.figma-ai-coder/config.json'), '{"userOwned":true}\n')
@@ -207,8 +210,60 @@ describe('public CLI init', () => {
 
     expect(exitCode).toBe(0)
     expect(existsSync(resolve(projectRoot, '.agents/skills/figma-ai-coder/SKILL.md'))).toBe(true)
-    expect(existsSync(resolve(projectRoot, '.claude/commands/figma-ai-coder.md'))).toBe(false)
+    expect(existsSync(resolve(projectRoot, '.claude/skills/figma-ai-coder/SKILL.md'))).toBe(false)
+    expect(existsSync(resolve(projectRoot, '.deepcode/skills/figma-ai-coder/SKILL.md'))).toBe(false)
     expect(existsSync(resolve(projectRoot, '.figma-ai-coder/config.json'))).toBe(true)
+  })
+
+  it('installs the portable Skill for Deep Code', async () => {
+    const projectRoot = makeTemporaryDirectory('figma-ai-init-deepseek-')
+    const packageRoot = makeTemporaryDirectory('figma-ai-init-deepseek-package-')
+    createPackageTemplates(packageRoot)
+
+    const exitCode = await runCli(['init', '--agent=deepseek'], {
+      cwd: () => projectRoot,
+      packageRoot,
+      stdout: captureWriter().writer,
+      stderr: captureWriter().writer,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(existsSync(resolve(projectRoot, '.deepcode/skills/figma-ai-coder/SKILL.md'))).toBe(true)
+    expect(existsSync(resolve(projectRoot, '.agents/skills/figma-ai-coder/SKILL.md'))).toBe(true)
+    expect(existsSync(resolve(projectRoot, '.claude/skills/figma-ai-coder/SKILL.md'))).toBe(false)
+  })
+
+  it('can initialize only project configuration and return structured next steps', async () => {
+    const projectRoot = makeTemporaryDirectory('figma-ai-init-config-only-')
+    const packageRoot = makeTemporaryDirectory('figma-ai-init-config-only-package-')
+    createPackageTemplates(packageRoot)
+    const stdout = captureWriter()
+
+    const exitCode = await runCli(['init', '--config-only', '--json'], {
+      cwd: () => projectRoot,
+      packageRoot,
+      stdout: stdout.writer,
+      stderr: captureWriter().writer,
+    })
+
+    expect(exitCode).toBe(0)
+    expect(existsSync(resolve(projectRoot, '.figma-ai-coder/config.json'))).toBe(true)
+    expect(existsSync(resolve(projectRoot, '.agents'))).toBe(false)
+    expect(existsSync(resolve(projectRoot, '.claude'))).toBe(false)
+    expect(existsSync(resolve(projectRoot, '.deepcode'))).toBe(false)
+    expect(JSON.parse(stdout.read())).toMatchObject({
+      ok: true,
+      command: 'init',
+      configOnly: true,
+      credentials: {
+        figmaPatHintDetected: false,
+      },
+      next: {
+        requiredInput: ['figmaUrl', 'sourceTarget'],
+        contextOutput: '.figma-ai-coder/runs/<run-id>/',
+        finalCodeOutput: '<user-confirmed-source-target>',
+      },
+    })
   })
 
   it('rejects symlinked initialization parents before writing outside the project', async () => {
@@ -261,7 +316,7 @@ describe('public CLI diagnostics', () => {
       })).toBe(0)
       const report = JSON.parse(doctorOutput.read())
       expect(report.ok).toBe(true)
-      expect(report.checks.credentials.localPatDetected).toBe(false)
+      expect(report.checks.credentials.localPatHintDetected).toBe(false)
     } finally {
       if (originalPat !== undefined) process.env.FIGMA_PAT = originalPat
     }

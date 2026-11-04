@@ -4,14 +4,14 @@
 
 把 Figma 设计链接交给 AI 编程 Agent，生成符合当前项目真实组件、规范和工程约束的代码。
 
-Figma AI Coder 不是套用固定模板的一键导出工具。CLI 负责稳定地提取设计上下文并检查当前仓库；Codex 或 Claude Code 再读取真实代码，确认组件 API，把设计翻译为项目已有的写法，修改代码并执行项目检查。
+Figma AI Coder 不是套用固定模板的一键导出工具。CLI 负责稳定地提取设计上下文并检查当前仓库；Codex、Claude Code、Deep Code 或 DeepSeek Harness 再读取真实代码，确认组件 API，把设计翻译为项目已有的写法，修改代码并执行项目检查。
 
 ```text
 Figma 设计 + 当前代码仓库
              ↓
       确定性的上下文提取
              ↓
-       Codex / Claude Code
+ Codex / Claude Code / DeepSeek Agent
              ↓
      可审查的项目代码变更
 ```
@@ -42,7 +42,7 @@ AI Agent 才是代码实现者。它读取相关源码，确认真实导出和�
 ## 完整工作流
 
 1. 在目标仓库中执行一次 `npx figma-ai-coder init`。
-2. 把 Figma 设计链接以及目标文件或功能告诉 Codex 或 Claude Code。
+2. 把 Figma 设计链接以及目标文件或功能同时告诉 AI 编程 Agent。
 3. Agent 读取仓库指令，运行 `inspect`，并通过真实源码确认候选组件和 Token。
 4. Agent 使用新的输出目录运行 `context`，获得所选 Figma 节点的语义 HTML、结构化清单和诊断信息。
 5. Agent 将这些证据映射到项目真实抽象中，修改代码并执行仓库已有检查。
@@ -50,19 +50,29 @@ AI Agent 才是代码实现者。它读取相关源码，确认真实导出和�
 
 ## 快速开始
 
-要求：Node.js 20+，以及受支持的编程 Agent。`init` 和 `inspect` 不需要 Figma 凭证；只有 `context` 读取设计时需要 Figma Personal Access Token。Token 只在本地设置，不要提交到仓库：
+要求：Node.js 20+，以及受支持的编程 Agent。`init` 和 `inspect` 不需要 Figma 凭证；只有 `context` 读取设计时需要具备 Figma 文件内容读取权限的 [Figma Personal Access Token](https://developers.figma.com/docs/rest-api/personal-access-tokens/)。Token 只在本地设置，不要提交到仓库，也不要粘贴进 AI 对话：
 
 ```bash
 export FIGMA_PAT="your-figma-personal-access-token"
 ```
 
-在需要实现设计的目标仓库中初始化：
+根据使用的 Agent 安装项目 Skill：
 
 ```bash
-npx figma-ai-coder init
+# Codex
+npx figma-ai-coder@latest init --agent=codex
+
+# Claude Code
+npx figma-ai-coder@latest init --agent=claude
+
+# 使用 DeepSeek 的 Deep Code
+npx figma-ai-coder@latest init --agent=deepseek
+
+# 同时安装全部项目入口
+npx figma-ai-coder@latest init --agent=all
 ```
 
-该命令会安装 Agent 入口，并在 `.figma-ai-coder/` 下创建缺失的项目配置。`init` 永远不会覆盖已经存在的项目文件。
+Codex 安装到 `.agents/skills/figma-ai-coder/`，Claude Code 安装到 `.claude/skills/figma-ai-coder/`，Deep Code 安装到 `.deepcode/skills/figma-ai-coder/`；DeepSeek 目标还会同时安装 DeepSeek Harness 使用的通用 `.agents/skills/` 入口。如果已经通过 Plugin 或技能市场安装了 Skill，可以运行 `npx figma-ai-coder@latest init --config-only`，只创建项目配置。`init` 永远不会覆盖已经存在的项目文件。
 
 然后直接让 Agent 实现设计。
 
@@ -79,6 +89,17 @@ Claude Code：
 /figma-ai-coder https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2 src/pages/Checkout.tsx
 ```
 
+Deep Code / DeepSeek Harness：
+
+```text
+使用 figma-ai-coder 实现这个设计。
+Figma 链接：https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2
+最终代码位置：src/pages/Checkout.tsx
+先检查仓库并给出组件映射方案，再修改代码。
+```
+
+Figma 链接和最终源码位置都是必要输入。缺少任意一项或目标存在歧义时，Skill 必须先询问。设计证据生成到 `.figma-ai-coder/runs/<run-id>/`；最终业务代码只写入用户确认的源码目标。
+
 Agent 会自动检查仓库、提取 Figma 上下文、审查映射关系、实现页面，并运行最相关的项目检查。
 
 ## 直接使用 CLI
@@ -87,7 +108,10 @@ Agent 会自动检查仓库、提取 Figma 上下文、审查映射关系、实�
 
 ```bash
 # 创建缺失的 Agent 入口和项目配置
-npx figma-ai-coder init
+npx figma-ai-coder init --agent=codex
+
+# Skill 已由 Plugin 或技能市场安装时，只创建项目配置
+npx figma-ai-coder init --config-only
 
 # 检查框架、样式、候选组件、Token 和验证命令
 npx figma-ai-coder inspect --json
@@ -96,7 +120,7 @@ npx figma-ai-coder inspect --json
 npx figma-ai-coder context "https://www.figma.com/design/FILE_KEY/NAME?node-id=1-2" \
   --out=.figma-ai-coder/runs/checkout-page
 
-# 诊断鉴权与项目配置
+# 诊断鉴权、Agent Skill 与项目配置
 npx figma-ai-coder doctor
 ```
 

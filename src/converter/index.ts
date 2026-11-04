@@ -169,9 +169,13 @@ export function convertNodeToCSS(
     }
     Object.assign(css, textStyles)
   } else {
-    const backgroundColor = convertFillsToBackgroundColor(node.fills, variableMap)
-    if (backgroundColor) {
-      css['background-color'] = backgroundColor
+    const background = convertFillsToBackgroundColor(node.fills, variableMap)
+    if (background) {
+      if (background.startsWith('url(') || background.includes('gradient(')) {
+        css['background-image'] = background
+      } else {
+        css['background-color'] = background
+      }
     }
   }
 

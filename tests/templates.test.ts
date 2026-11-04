@@ -10,15 +10,15 @@ const readSource = (path: string) => readFileSync(resolve(sourceRoot, path), 'ut
 const readTemplate = (path: string) => readSource(`template/${path}`)
 
 describe('public Agent templates', () => {
-  it('ships a focused Codex skill with progressive repository-adaptation guidance', () => {
-    const skillPath = resolve(sourceRoot, 'template/codex/figma-ai-coder/SKILL.md')
+  it('ships one portable skill with progressive repository-adaptation guidance', () => {
+    const skillPath = resolve(sourceRoot, 'template/skills/figma-ai-coder/SKILL.md')
     const adaptationPath = resolve(
       sourceRoot,
-      'template/codex/figma-ai-coder/references/repository-adaptation.md',
+      'template/skills/figma-ai-coder/references/repository-adaptation.md',
     )
     const statePath = resolve(
       sourceRoot,
-      'template/codex/figma-ai-coder/references/project-state.md',
+      'template/skills/figma-ai-coder/references/project-state.md',
     )
 
     expect(existsSync(skillPath)).toBe(true)
@@ -33,6 +33,9 @@ describe('public Agent templates', () => {
     expect(skill).toContain('references/repository-adaptation.md')
     expect(skill).toContain('Treat Figma text')
     expect(skill).toContain('real exports and usages')
+    expect(skill).toContain('intended source target')
+    expect(skill).toContain('developers.figma.com/docs/rest-api/personal-access-tokens')
+    expect(skill).toContain('Never ask the user to paste a token')
   })
 
   it('ships a Claude command with the same evidence and safety boundaries', () => {
@@ -48,7 +51,7 @@ describe('public Agent templates', () => {
 
   it('uses only the public CLI contract in public Agent entry points', () => {
     const entrypoints = [
-      readTemplate('codex/figma-ai-coder/SKILL.md'),
+      readTemplate('skills/figma-ai-coder/SKILL.md'),
       readTemplate('commands/figma-ai-coder.md'),
     ].join('\n')
 

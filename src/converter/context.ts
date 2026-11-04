@@ -95,6 +95,23 @@ export interface ContextNestedInstanceV1 {
   componentId?: string
 }
 
+export interface ContextTokenBindingV1 {
+  source: 'node' | 'fill' | 'stroke'
+  property: string
+  variableId: string
+  resolved: boolean
+  resolvedName?: string
+  index?: number
+}
+
+export interface ContextImageAssetV1 {
+  fillIndex: number
+  imageRef?: string
+  imageHash?: string
+  scaleMode?: 'FILL' | 'FIT' | 'CROP' | 'TILE'
+  resolved: false
+}
+
 /**
  * Versioned, framework-independent DTO exposed to AI consumers.
  *
@@ -114,6 +131,8 @@ export interface DesignNodeV1 {
   props?: ContextPropsV1
   textOverrides?: ContextTextOverrideV1[]
   nestedInstances?: ContextNestedInstanceV1[]
+  tokenBindings?: ContextTokenBindingV1[]
+  imageAssets?: ContextImageAssetV1[]
   unmappedComponent: boolean
   isVectorIcon?: boolean
   iconName?: string
@@ -135,14 +154,17 @@ export interface ContextComponentV1 {
   props?: ContextPropsV1
   textOverrides?: ContextTextOverrideV1[]
   nestedInstances?: ContextNestedInstanceV1[]
+  tokenBindings?: ContextTokenBindingV1[]
+  imageAssets?: ContextImageAssetV1[]
   unmapped: boolean
 }
 
 export interface ContextDiagnosticV1 {
-  code: 'unmapped-component' | 'unresolved-icon'
+  code: 'unmapped-component' | 'unresolved-icon' | 'unresolved-image'
   severity: 'warning'
   message: string
   nodeId?: string
+  fillIndex?: number
 }
 
 export interface ContextPreviewV1 {
@@ -199,9 +221,10 @@ function serializeStyles(node: ComponentNode): ContextStylesV1 | undefined {
 
 function serializeProps(node: ComponentNode): ContextPropsV1 | undefined {
   const attributes = cloneRecord(node.props)
-  const component = node.componentProps
+  const componentProps = node.componentPropsEvidence ?? node.componentProps
+  const component = componentProps
     ? Object.fromEntries(
-        Object.entries(node.componentProps).map(([key, value]) => [key, { ...value }])
+        Object.entries(componentProps).map(([key, value]) => [key, { ...value }])
       )
     : undefined
 
@@ -223,12 +246,24 @@ function serializeNestedInstances(node: ComponentNode): ContextNestedInstanceV1[
   return node.nestedInstances.map(item => ({ ...item }))
 }
 
+function serializeTokenBindings(node: ComponentNode): ContextTokenBindingV1[] | undefined {
+  if (!node.tokenBindings?.length) return undefined
+  return node.tokenBindings.map(binding => ({ ...binding }))
+}
+
+function serializeImageAssets(node: ComponentNode): ContextImageAssetV1[] | undefined {
+  if (!node.imageFills?.length) return undefined
+  return node.imageFills.map(image => ({ ...image }))
+}
+
 function serializeNode(node: ComponentNode): DesignNodeV1 {
   const children = node.children?.map(serializeNode)
   const styles = serializeStyles(node)
   const props = serializeProps(node)
   const textOverrides = serializeTextOverrides(node)
   const nestedInstances = serializeNestedInstances(node)
+  const tokenBindings = serializeTokenBindings(node)
+  const imageAssets = serializeImageAssets(node)
 
   return {
     tag: node.tag,
@@ -243,6 +278,8 @@ function serializeNode(node: ComponentNode): DesignNodeV1 {
     ...(props ? { props } : {}),
     ...(textOverrides ? { textOverrides } : {}),
     ...(nestedInstances ? { nestedInstances } : {}),
+    ...(tokenBindings ? { tokenBindings } : {}),
+    ...(imageAssets ? { imageAssets } : {}),
     unmappedComponent: node.isUnmappedInstance === true,
     ...(node.isVectorIcon !== undefined ? { isVectorIcon: node.isVectorIcon } : {}),
     ...(node.iconName ? { iconName: node.iconName } : {}),
@@ -271,6 +308,8 @@ function collectContextMetadata(
       ...(node.props ? { props: node.props } : {}),
       ...(node.textOverrides ? { textOverrides: node.textOverrides } : {}),
       ...(node.nestedInstances ? { nestedInstances: node.nestedInstances } : {}),
+      ...(node.tokenBindings ? { tokenBindings: node.tokenBindings } : {}),
+      ...(node.imageAssets ? { imageAssets: node.imageAssets } : {}),
       unmapped: node.unmappedComponent,
     })
   }
@@ -290,6 +329,18 @@ function collectContextMetadata(
       severity: 'warning',
       message: 'The icon name could not be resolved automatically.',
       ...(node.nodeId ? { nodeId: node.nodeId } : {}),
+    })
+  }
+
+  for (const image of node.imageAssets ?? []) {
+    diagnostics.push({
+      code: 'unresolved-image',
+      severity: 'warning',
+      message: image.imageRef || image.imageHash
+        ? 'Image fill requires project asset resolution.'
+        : 'Image fill has no Figma resource reference.',
+      ...(node.nodeId ? { nodeId: node.nodeId } : {}),
+      fillIndex: image.fillIndex,
     })
   }
 

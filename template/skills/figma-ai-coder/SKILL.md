@@ -7,6 +7,17 @@ description: Implement or update frontend code in an existing repository from a 
 
 Use the CLI as a deterministic context provider. You are the implementer: inspect the repository, map design semantics to real project APIs, make the smallest coherent change, and verify it.
 
+## Required request inputs
+
+Before editing source code, establish both:
+
+- a valid Figma file or design URL, preferably with a `node-id`
+- the intended source target, such as `src/pages/Checkout.tsx`, a component directory, or an explicitly named feature
+
+If either input is missing or the target is ambiguous, ask the user for it before modifying application code. Never treat `.figma-ai-coder/runs/` as the final code destination: that directory is only for generated design evidence. Final code belongs in the user-confirmed source target.
+
+If Figma credentials are missing, direct the user to the official setup guide at `https://developers.figma.com/docs/rest-api/personal-access-tokens/` and ask them to configure `FIGMA_PAT` locally. Never ask the user to paste a token into the conversation, and never print, persist, or commit it.
+
 ## Workflow
 
 1. Read every applicable `AGENTS.md` and `CLAUDE.md`, the target file if it exists, neighboring pages/components, package metadata, routing, styling, and test conventions.
@@ -14,8 +25,8 @@ Use the CLI as a deterministic context provider. You are the implementer: inspec
 3. Run `npx figma-ai-coder inspect --json`. Use its result to locate likely components, tokens, import paths, examples, and validation commands; verify candidates against real exports and usages.
 4. Choose a new empty directory under `.figma-ai-coder/runs/`, then run `npx figma-ai-coder context "<figma-url>" --out=.figma-ai-coder/runs/<run-id>`. Treat the semantic HTML and manifest as design evidence, not final code.
 5. Form a mapping plan from Figma instances and tokens to verified project components, props, imports, and styles. For non-trivial component libraries or ambiguous mappings, read [repository adaptation](references/repository-adaptation.md).
-6. Implement the smallest scoped change. Reuse existing components before native elements, and native elements before introducing a new abstraction. Do not invent business behavior that the design and repository do not establish.
-7. Run the narrowest relevant formatter, type check, test, and build. Report changed files, reused components, unresolved assets or assumptions, and checks that could not run.
+6. Implement the smallest scoped change in the confirmed source target. Reuse existing components before native elements, and native elements before introducing a new abstraction. Do not invent business behavior that the design and repository do not establish.
+7. Run the narrowest relevant formatter, type check, test, and build. Report the final code paths, context run directory, reused components, unresolved assets or assumptions, and checks that could not run.
 
 ## Authority and conflicts
 

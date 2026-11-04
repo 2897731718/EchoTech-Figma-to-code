@@ -13,7 +13,7 @@ Repository ── inspect ────────>│ project context index   �
                                             │
 Project instructions/rules ─────────────────┤
                                             ▼
-                                  Codex / Claude Code
+                         Codex / Claude Code / DeepSeek Agent
                                             │
                               verify mappings and edit code
                                             │
@@ -22,6 +22,16 @@ Project instructions/rules ─────────────────�
 ```
 
 ## Responsibility boundary
+
+### Portable Skill distribution
+
+One canonical Skill bundle is shipped in `template/skills/figma-ai-coder/`. Initialization copies that unchanged bundle to the project-level location understood by each host:
+
+- Codex and DeepSeek Harness: `.agents/skills/figma-ai-coder/`
+- Claude Code: `.claude/skills/figma-ai-coder/`
+- Deep Code: `.deepcode/skills/figma-ai-coder/`
+
+The `deepseek` target installs both DeepSeek locations so the same command supports Deep Code and DeepSeek Harness. The Claude command under `.claude/commands/` is a compatibility wrapper, not a separate source of workflow rules. A marketplace or plugin installation can provide the Skill itself and use `init --config-only` for project-owned configuration.
 
 ### Deterministic CLI
 
@@ -81,7 +91,7 @@ Figma REST response
 → semantic HTML + manifest + diagnostics
 ```
 
-The manifest preserves information that plain HTML cannot express reliably, including Figma node IDs, instance names, variants, component properties, text overrides, nested instances, token references, and unresolved assets.
+The manifest preserves information that plain HTML cannot express reliably, including Figma node IDs, instance names, variants, every component-property state (including `false`, empty text, and instance swaps), text overrides, nested instances, raw variable IDs with resolution status, and every image-fill reference. Assets that still require project-side resolution are emitted as explicit diagnostics instead of being silently dropped.
 
 Figma text, names, plugin data, annotations, and remote adapter content are untrusted data. They are never interpreted as Agent instructions.
 The generated `design.html` is reference-only and carries a restrictive Content Security Policy; read it as evidence rather than deploying or executing it as application code.
@@ -101,7 +111,7 @@ The generated `design.html` is reference-only and carries a restrictive Content 
     └── diagnostics.json
 ```
 
-`init` and future template updates create missing templates but never overwrite user-owned files. Generated directories are ignored by the nested `.gitignore`. The caller gives each context operation a distinct empty run directory so concurrent Agent tasks do not share mutable output.
+`init` and future template updates create missing templates but never overwrite user-owned files. Generated directories are ignored by the nested `.gitignore`. The caller gives each context operation a distinct empty run directory so concurrent Agent tasks do not share mutable output. This run directory contains design evidence only; the Skill requires a separate, user-confirmed source target before application code is edited.
 
 Stable source code and checked-in instructions remain the truth source. Generated manifests carry a schema version and can be rebuilt from the current repository and Figma node.
 
@@ -129,7 +139,8 @@ The external component adapter belongs to the consuming repository. It is not co
 
 Release validation should cover:
 
-- schema and template validation for the Codex Skill and Claude command
+- schema and template validation for the portable Skill and Claude compatibility command
+- installation fixtures for Codex, Claude Code, Deep Code, and configuration-only mode
 - fixture repositories for React and Vue component/token discovery
 - semantic context fixtures preserving instance metadata
 - refusal to scan secrets or traverse outside the workspace

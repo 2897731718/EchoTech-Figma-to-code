@@ -106,6 +106,14 @@ describe('Style Converter', () => {
       const result = convertFillsToBackgroundColor(fills)
       expect(result).toBeNull()
     })
+
+    it('should prefer the current Figma imageRef over legacy imageHash', () => {
+      const result = convertFillsToBackgroundColor([
+        { type: 'IMAGE', imageRef: 'ref-current', imageHash: 'hash-legacy' },
+      ])
+
+      expect(result).toBe('url(figma-image:ref-current)')
+    })
   })
 
   describe('convertStrokesToBorder', () => {
@@ -229,6 +237,18 @@ describe('Layout Converter', () => {
       const css = convertNodeToCSS(node, undefined, new Map(), variableMap)
       expect(css['border-radius']).toBe('var(--radius-sm,8px)')
     })
+
+    it('should emit image fills as background-image', () => {
+      const node = {
+        id: '1:3', name: 'Image', type: 'RECTANGLE',
+        fills: [{ type: 'IMAGE', imageRef: 'ref-current' }],
+      } as Node
+
+      const css = convertNodeToCSS(node, undefined, new Map())
+
+      expect(css['background-image']).toBe('url(figma-image:ref-current)')
+      expect(css['background-color']).toBeUndefined()
+    })
   })
 })
 
@@ -265,6 +285,26 @@ describe('simplifyNode', () => {
     // 叶子 COMPONENT（无嵌套 INSTANCE）会被结构兜底折叠
     expect(result.children![0].children).toHaveLength(0)
   })
+
+  it('keeps a single-child wrapper when its geometry carries layout meaning', () => {
+    const child = makeNode({
+      id: '2:1',
+      type: 'TEXT',
+      absoluteBoundingBox: { x: 8, y: 8, width: 80, height: 20 },
+    })
+    const wrapper = makeNode({
+      id: '1:2',
+      layoutSizingHorizontal: 'FIXED',
+      absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 40 },
+      children: [child],
+    })
+    const root = makeNode({ id: 'root', children: [wrapper] })
+
+    const result = simplifyNode(root, true)
+
+    expect(result.children?.[0]?.id).toBe('1:2')
+    expect(result.children?.[0]?.children?.[0]?.id).toBe('2:1')
+  })
 })
 
 describe('buildComponentTree - componentId 透传', () => {
@@ -287,6 +327,31 @@ describe('buildComponentTree - componentId 透传', () => {
     }
     const result = buildComponentTree(node, styleConverter, undefined, new Map())
     expect(result?.componentId).toBeUndefined()
+  })
+
+  it('keeps legacy generator props filtered while preserving complete context evidence', () => {
+    const node: Node = {
+      id: '7:1', name: 'Button', type: 'INSTANCE', componentId: '10:100',
+      componentProperties: {
+        'Enabled#1:0': { type: 'BOOLEAN', value: true },
+        'Disabled#2:0': { type: 'BOOLEAN', value: false },
+        'Label#3:0': { type: 'TEXT', value: '' },
+        'Icon#4:0': { type: 'INSTANCE_SWAP', value: '20:1' },
+      },
+      children: [],
+    }
+
+    const result = buildComponentTree(node, styleConverter, undefined, new Map())
+
+    expect(result?.componentProps).toEqual({
+      Enabled: { type: 'BOOLEAN', value: true },
+    })
+    expect(result?.componentPropsEvidence).toEqual({
+      Enabled: { type: 'BOOLEAN', value: true },
+      Disabled: { type: 'BOOLEAN', value: false },
+      Label: { type: 'TEXT', value: '' },
+      Icon: { type: 'INSTANCE_SWAP', value: '20:1' },
+    })
   })
 })
 
